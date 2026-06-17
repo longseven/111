@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K12 数学题目改编系统</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>K12 数学题目改编系统</h1>
+    <p class="subtitle">上传截图 / 文件或粘贴题目 → 识别知识点边界 → 按条件改编 → 不超纲校验</p>
+  </header>
+
+  <main>
+    <!-- 第 1 步：上传 / 解析 -->
+    <section class="card" id="step-upload">
+      <h2><span class="step-num">1</span> 上传原题</h2>
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md" hidden />
+        <p>拖拽文件到此，或 <button type="button" class="link" id="browseBtn">选择文件</button></p>
+        <p class="hint">支持 图片 / PDF / 文本，单文件 ≤ 10MB</p>
+        <p class="file-name" id="fileName"></p>
+      </div>
+      <div class="or-divider">或</div>
+      <textarea id="pasteText" rows="4" placeholder="直接粘贴题目文本，例如：计算 3/4 + 1/6 的值。"></textarea>
+      <button class="primary" id="parseBtn">解析原题</button>
+    </section>
+
+    <!-- 第 1 步结果：识别边界 -->
+    <section class="card hidden" id="step-parsed">
+      <h2>识别结果（不超纲边界）</h2>
+      <div id="parsedView"></div>
+    </section>
+
+    <!-- 第 2 步：改编条件 -->
+    <section class="card hidden" id="step-conditions">
+      <h2><span class="step-num">2</span> 改编条件</h2>
+      <div class="form-grid">
+        <label>难度调整
+          <select id="difficultyChange">
+            <option value="keep">保持</option>
+            <option value="easier">更简单</option>
+            <option value="harder">更难</option>
+          </select>
+        </label>
+        <label>目标题型
+          <select id="targetType">
+            <option value="keep">保持原题型</option>
+            <option value="选择题">选择题</option>
+            <option value="填空题">填空题</option>
+            <option value="解答题">解答题</option>
+            <option value="应用题">应用题</option>
+          </select>
+        </label>
+        <label>改编方式
+          <select id="changeMode">
+            <option value="values">仅换数值</option>
+            <option value="scenario">换情境</option>
+            <option value="phrasing">换问法</option>
+            <option value="comprehensive">综合改编</option>
+          </select>
+        </label>
+        <label>情境主题（可空）
+          <input type="text" id="scenarioTheme" placeholder="如：购物、行程、体育" />
+        </label>
+        <label>生成数量：<span id="countLabel">2</span>
+          <input type="range" id="count" min="1" max="5" value="2" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="allowExtension" />
+          允许轻微拓展知识点（默认严格不超纲）
+        </label>
+      </div>
+      <button class="primary" id="adaptBtn">生成新题</button>
+    </section>
+
+    <!-- 第 3 步：结果 -->
+    <section class="card hidden" id="step-results">
+      <div class="results-header">
+        <h2><span class="step-num">3</span> 改编结果</h2>
+        <button class="link" id="exportBtn">导出全部 JSON</button>
+      </div>
+      <div id="resultsView"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
