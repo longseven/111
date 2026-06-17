@@ -2,7 +2,7 @@
 
 把一道现有数学题快速改编成若干新题：换数值、换情境、换题型、调难度，**保证不超纲**并给出**改编理由**，便于教研复用与审核。
 
-系统是一个"视觉识别 + 受约束生成"的大模型应用，基于 Anthropic Claude（`claude-opus-4-8`）。
+系统是一个"视觉识别 + 受约束生成"的大模型应用，默认基于 Anthropic Claude（`claude-opus-4-8`），也可切换到任意 **OpenAI 兼容代理**（如 codexzh）走 Opus 4.8。
 
 ## 工作流程
 
@@ -28,13 +28,39 @@
 
 ```bash
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...      # 必填
+export ANTHROPIC_API_KEY=sk-ant-...      # 默认 provider 必填
 uvicorn app.main:app --reload
 ```
 
 浏览器打开 <http://127.0.0.1:8000>。
 
-可选环境变量见 `.env.example`（`ADAPT_MODEL`、`MAX_TOKENS`、`MAX_UPLOAD_BYTES`）。
+## 切换 provider（Anthropic 官方 / OpenAI 兼容代理）
+
+用环境变量 `LLM_PROVIDER` 切换，完整示例见 `.env.example`。
+
+**A. Anthropic 官方（默认，支持 图片 + PDF + 文本）**
+
+```bash
+export LLM_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+export ADAPT_MODEL=claude-opus-4-8        # 可选
+```
+
+**B. OpenAI 兼容代理（如 codexzh，走 Opus 4.8；支持 图片 + 文本，不支持 PDF）**
+
+```bash
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY=<代理给的 key>
+export OPENAI_BASE_URL=https://api.codexzh.com/v1
+export OPENAI_MODEL=claude-opus-4-8       # 用代理实际发布的模型 ID
+```
+
+说明：
+- OpenAI 模式用 chat/completions + 把 JSON Schema 写进提示来约束结构化输出，对第三方代理兼容性最好；优先请求 `json_object`，代理不支持时自动退回普通对话再解析。
+- OpenAI 模式下 PDF 暂不支持（各代理对文档输入实现不一），请改用图片或粘贴文本，或切回 Anthropic 模式。
+- `OPENAI_MODEL` 要填代理目录里**实际存在**的模型 ID（先 `curl $OPENAI_BASE_URL/models` 查），不一定叫 `claude-opus-4-8`。
+
+其余可选变量：`MAX_TOKENS`、`MAX_UPLOAD_BYTES`。
 
 ## 接口
 
@@ -62,11 +88,12 @@ curl -F 'text=计算 3/4 + 1/6 的值。' http://127.0.0.1:8000/api/parse
 ```
 app/
   main.py           FastAPI 路由 + 静态托管
-  config.py         环境变量配置
+  config.py         环境变量配置（provider 切换）
   schemas.py        Pydantic 数据模型（结构化输出契约）
-  content.py        文件/文本 → Anthropic content block
+  content.py        文件/文本 → 中性部件 + Anthropic/OpenAI 双适配器
   prompts.py        解析 / 改编 / 校验 三段 system prompt
-  claude_service.py 三次模型调用封装
+  llm.py            provider 抽象：Anthropic 官方 / OpenAI 兼容代理
+  claude_service.py 三个环节封装（provider 无关）
 static/             原生 HTML/CSS/JS 单页前端
 tests/              离线单测
 ```

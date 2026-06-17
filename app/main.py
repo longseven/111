@@ -16,7 +16,7 @@ from .claude_service import (
     verify_in_scope,
 )
 from .config import get_settings
-from .content import UnsupportedFileError, build_problem_blocks
+from .content import UnsupportedFileError, build_problem_parts
 from .schemas import AdaptRequest, AdaptResponse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,7 +37,12 @@ def index() -> FileResponse:
 @app.get("/api/health")
 def health() -> dict:
     settings = get_settings()
-    return {"ok": True, "has_api_key": settings.has_api_key, "model": settings.model}
+    return {
+        "ok": True,
+        "provider": settings.provider,
+        "has_api_key": settings.has_api_key,
+        "model": settings.model,
+    }
 
 
 @app.post("/api/parse")
@@ -56,8 +61,8 @@ async def api_parse(
         file_name, file_bytes = file.filename or "upload", data
 
     try:
-        blocks = build_problem_blocks(file_name, file_bytes, text)
-        parsed = parse_problem(blocks)
+        parts = build_problem_parts(file_name, file_bytes, text)
+        parsed = parse_problem(parts)
     except (UnsupportedFileError, ValueError) as exc:
         return _error(400, str(exc))
     except ConfigError as exc:
