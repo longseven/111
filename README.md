@@ -55,10 +55,13 @@ export OPENAI_BASE_URL=https://api.codexzh.com/v1
 export OPENAI_MODEL=claude-opus-4-8       # 用代理实际发布的模型 ID
 ```
 
+OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt-5.5` 等——后端把模型名透传，切换只改 `OPENAI_MODEL`，无需改代码。
+
 说明：
 - OpenAI 模式用 chat/completions + 把 JSON Schema 写进提示来约束结构化输出，对第三方代理兼容性最好；优先请求 `json_object`，代理不支持时自动退回普通对话再解析。
+- **参数自动兼容**：GPT-5 类模型要求 `max_completion_tokens` 而非 `max_tokens`，后端检测到该错误会自动切换，因此在 Claude 与 GPT-5 系列之间切换不会因该参数报错。
 - OpenAI 模式下 PDF 暂不支持（各代理对文档输入实现不一），请改用图片或粘贴文本，或切回 Anthropic 模式。
-- `OPENAI_MODEL` 要填代理目录里**实际存在**的模型 ID（先 `curl $OPENAI_BASE_URL/models` 查），不一定叫 `claude-opus-4-8`。
+- `OPENAI_MODEL` 要填代理目录里**实际存在**的模型 ID（先 `curl $OPENAI_BASE_URL/models` 查），不一定叫 `claude-opus-4-8` 或 `gpt-5.5`。
 
 其余可选变量：`MAX_TOKENS`、`MAX_UPLOAD_BYTES`。
 

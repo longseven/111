@@ -13,7 +13,7 @@ from app.content import (
     to_anthropic_content,
     to_openai_content,
 )
-from app.llm import _extract_json
+from app.llm import _extract_json, _openai_chat
 from app.schemas import (
     AdaptConditions,
     AdaptedVariant,
@@ -94,6 +94,69 @@ def test_extract_json_fenced():
 
 def test_extract_json_with_prose():
     assert _extract_json('结果如下：{"a": 1} 完毕') == '{"a": 1}'
+
+
+# ---------- OpenAI 参数兼容回退 ----------
+class _StubMessage:
+    def __init__(self, content):
+        self.content = content
+        self.refusal = None
+
+
+class _StubResp:
+    def __init__(self, content):
+        self.choices = [type("C", (), {"message": _StubMessage(content)})()]
+
+
+class _StubCompletions:
+    def __init__(self, behavior):
+        self.behavior = behavior
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.behavior(kwargs)
+
+
+class _StubClient:
+    def __init__(self, behavior):
+        self.chat = type("Chat", (), {"completions": _StubCompletions(behavior)})()
+
+
+def test_openai_switches_to_max_completion_tokens():
+    def behavior(kwargs):
+        if "max_tokens" in kwargs:
+            raise RuntimeError("Unsupported parameter: 'max_tokens'. Use 'max_completion_tokens' instead.")
+        return _StubResp('{"ok": 1}')
+
+    client = _StubClient(behavior)
+    out = _openai_chat(client, "gpt-5.5", [{"role": "user", "content": "x"}], 100)
+    assert out == '{"ok": 1}'
+    calls = client.chat.completions.calls
+    assert len(calls) == 2
+    assert "max_completion_tokens" in calls[1] and "max_tokens" not in calls[1]
+
+
+def test_openai_drops_response_format_when_unsupported():
+    def behavior(kwargs):
+        if "response_format" in kwargs:
+            raise RuntimeError("response_format is not supported by this model")
+        return _StubResp('{"ok": 1}')
+
+    client = _StubClient(behavior)
+    out = _openai_chat(client, "some-model", [{"role": "user", "content": "x"}], 100)
+    assert out == '{"ok": 1}'
+    calls = client.chat.completions.calls
+    assert len(calls) == 2 and "response_format" not in calls[1]
+
+
+def test_openai_real_error_propagates():
+    def behavior(kwargs):
+        raise RuntimeError("invalid api key")
+
+    client = _StubClient(behavior)
+    with pytest.raises(RuntimeError, match="invalid api key"):
+        _openai_chat(client, "m", [{"role": "user", "content": "x"}], 100)
 
 
 # ---------- schema 往返 ----------

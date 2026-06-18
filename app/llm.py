@@ -89,11 +89,38 @@ def _openai_structured(system: str, parts: List[Dict[str, Any]], output_format: 
 
 
 def _openai_chat(client, model: str, messages: List[Dict[str, Any]], max_tokens: int) -> str:
-    kwargs: Dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens}
-    try:
-        resp = client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
-    except Exception:  # noqa: BLE001 — 代理可能不支持 response_format，退回普通请求
-        resp = client.chat.completions.create(**kwargs)
+    """调用 chat/completions，并对第三方/OpenAI 代理做参数自动兼容：
+
+    - 当模型不接受 max_tokens（GPT-5 类要求 max_completion_tokens）时自动切换；
+    - 当 response_format=json_object 不被支持时自动退回普通对话。
+
+    每种回退按错误信息触发、各最多一次；其他错误（鉴权、模型不存在等）直接抛出。
+    """
+    token_key = "max_tokens"
+    use_json = True
+    tried_token_switch = False
+    tried_drop_json = False
+
+    while True:
+        kwargs: Dict[str, Any] = {"model": model, "messages": messages, token_key: max_tokens}
+        if use_json:
+            kwargs["response_format"] = {"type": "json_object"}
+        try:
+            resp = client.chat.completions.create(**kwargs)
+            break
+        except Exception as exc:  # noqa: BLE001 — 按错误信息做参数兼容回退
+            msg = str(exc).lower()
+            token_issue = "max_completion_tokens" in msg or (
+                "max_tokens" in msg
+                and any(k in msg for k in ("unsupported", "not supported", "instead", "use "))
+            )
+            if not tried_token_switch and token_key == "max_tokens" and token_issue:
+                token_key, tried_token_switch = "max_completion_tokens", True
+                continue
+            if not tried_drop_json and use_json and ("response_format" in msg or "json" in msg):
+                use_json, tried_drop_json = False, True
+                continue
+            raise
 
     choice = resp.choices[0]
     if getattr(choice.message, "refusal", None):
