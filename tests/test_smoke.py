@@ -195,3 +195,27 @@ def test_adapt_result_roundtrip():
 def test_scope_check_result():
     r = ScopeCheckResult(checks=[ScopeCheck(index=0, passed=True, reason="知识点一致。")])
     assert r.checks[0].passed is True
+
+
+# ---------- .env 加载 ----------
+def test_load_dotenv(tmp_path):
+    import os
+
+    from app.config import _load_dotenv
+
+    f = tmp_path / ".env"
+    f.write_text(
+        '# 注释行\nFOO_TEST_KEY=bar\nQUOTED_KEY="baz"\nEMPTY_LINE_BELOW=\n',
+        encoding="utf-8",
+    )
+    try:
+        _load_dotenv(f)
+        assert os.environ.get("FOO_TEST_KEY") == "bar"
+        assert os.environ.get("QUOTED_KEY") == "baz"  # 引号被去掉
+        # 已存在的环境变量不被覆盖
+        os.environ["FOO_TEST_KEY"] = "keep"
+        _load_dotenv(f)
+        assert os.environ["FOO_TEST_KEY"] == "keep"
+    finally:
+        for k in ("FOO_TEST_KEY", "QUOTED_KEY", "EMPTY_LINE_BELOW"):
+            os.environ.pop(k, None)

@@ -26,13 +26,26 @@
 
 ## 运行
 
+### 一键启动（推荐）
+
+```bash
+# macOS / Linux
+./run.sh
+# Windows
+run.bat
+```
+
+首次运行会自动建虚拟环境、装依赖，并从 `.env.example` 生成 `.env`；
+**编辑 `.env` 填入你的 provider 与 API key**，再次运行即启动。应用会自动加载 `.env`。
+浏览器打开 <http://127.0.0.1:8000>。
+
+### 手动启动
+
 ```bash
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY=sk-ant-...      # 默认 provider 必填
 uvicorn app.main:app --reload
 ```
-
-浏览器打开 <http://127.0.0.1:8000>。
 
 ## 切换 provider（Anthropic 官方 / OpenAI 兼容代理）
 
