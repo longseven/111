@@ -140,6 +140,15 @@ def export_docx(
     - "image" ：公式渲染成图片嵌入（matplotlib）。WPS 等任何软件都能正常显示，但不可编辑。
     无 pandoc 时 omml 模式退回纯文本。
     """
+    # 导出前对题干/选项做分行规整，兼容生成时未分行的（含旧）数据
+    from .claude_service import format_choices
+
+    if parsed is not None:
+        parsed = parsed.model_copy(
+            update={"problem_text": format_choices(parsed.problem_text)}
+        )
+    variants = [v.model_copy(update={"stem": format_choices(v.stem)}) for v in variants]
+
     if formula_mode == "image":
         return _export_with_images(parsed, variants, title)
     if pandoc_available():
