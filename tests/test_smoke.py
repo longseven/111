@@ -255,6 +255,27 @@ def test_export_docx_is_valid_docx():
         assert "改编题目" in xml or "B(4" in xml
 
 
+def test_export_docx_image_mode_embeds_pictures():
+    import io
+    import zipfile
+
+    from app.export import export_docx
+
+    data = export_docx(None, _sample_variants(), "改编题目", formula_mode="image")
+    assert data[:2] == b"PK"
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        names = z.namelist()
+    # 图片模式应嵌入公式图片
+    assert any(n.startswith("word/media/") for n in names)
+
+
+def test_render_math_png_handles_le_abbrev():
+    from app.export import _render_math_png
+
+    png = _render_math_png(r"P(\frac{3}{2} \le X \le \frac{5}{2}) = \frac{3}{8}")
+    assert png is not None and png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 # ---------- .env 加载 ----------
 def test_load_dotenv(tmp_path):
     import os

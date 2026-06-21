@@ -95,7 +95,9 @@ async def api_adapt(payload: AdaptRequest) -> JSONResponse:
 @app.post("/api/export")
 async def api_export(payload: ExportRequest):
     try:
-        data = export_docx(payload.parsed, payload.variants, payload.title)
+        data = export_docx(
+            payload.parsed, payload.variants, payload.title, payload.formula_mode
+        )
     except Exception as exc:  # noqa: BLE001
         return _error(502, f"导出失败：{exc}")
     return Response(

@@ -119,11 +119,106 @@ def export_docx(
     parsed: Optional[ParsedProblem],
     variants: List[AdaptedVariant],
     title: str = "改编题目",
+    formula_mode: str = "omml",
 ) -> bytes:
-    """返回 .docx 字节流。有 pandoc 走 OMML 公式，否则退回纯文本。"""
+    """返回 .docx 字节流。
+
+    formula_mode:
+    - "omml"  ：公式为 Word 原生可编辑公式（pandoc；MathType 可转换）。Word 显示最佳。
+    - "image" ：公式渲染成图片嵌入（matplotlib）。WPS 等任何软件都能正常显示，但不可编辑。
+    无 pandoc 时 omml 模式退回纯文本。
+    """
+    if formula_mode == "image":
+        return _export_with_images(parsed, variants, title)
     if pandoc_available():
         try:
             return _export_with_pandoc(build_markdown(parsed, variants, title))
         except Exception:  # noqa: BLE001 — pandoc 失败则退回 python-docx
             pass
     return _export_with_docx(parsed, variants, title)
+
+
+# ---------- 图片公式模式 ----------
+def _normalize_latex(s: str) -> str:
+    """把模型常用的 LaTeX 缩写改成 matplotlib mathtext 认的全名。"""
+    s = re.sub(r"\\le(?![a-zA-Z])", r"\\leq", s)
+    s = re.sub(r"\\ge(?![a-zA-Z])", r"\\geq", s)
+    s = re.sub(r"\\ne(?![a-zA-Z])", r"\\neq", s)
+    return s
+
+
+def _render_math_png(latex: str) -> Optional[bytes]:
+    """用 matplotlib 把单个 LaTeX 公式渲染成 PNG；失败返回 None。线程安全（不用 pyplot）。"""
+    try:
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.figure import Figure
+
+        fig = Figure()
+        FigureCanvasAgg(fig)
+        fig.text(0.0, 0.0, f"${_normalize_latex(latex)}$", fontsize=12)
+        buf = BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", pad_inches=0.03)
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001 — 该公式渲染失败，交由上层退回纯文本
+        return None
+
+
+def _split_segments(text: str):
+    """把含 $...$ 的文本切成 [(kind, content)]，kind ∈ {'text','math'}。"""
+    parts = re.split(r"(\$\$.+?\$\$|\$.+?\$)", text, flags=re.S)
+    segs = []
+    for p in parts:
+        if not p:
+            continue
+        if p.startswith("$$") and p.endswith("$$"):
+            segs.append(("math", p[2:-2]))
+        elif p.startswith("$") and p.endswith("$"):
+            segs.append(("math", p[1:-1]))
+        else:
+            segs.append(("text", p))
+    return segs
+
+
+def _add_rich_paragraph(doc, label: str, text: str) -> None:
+    """新增一个段落：可选加粗 label，正文里的 $...$ 公式渲染成行内图片，失败退回纯文本。"""
+    from PIL import Image
+    from docx.shared import Inches
+
+    p = doc.add_paragraph()
+    if label:
+        run = p.add_run(label)
+        run.bold = True
+    for kind, content in _split_segments(text):
+        if kind == "text":
+            p.add_run(content)
+            continue
+        png = _render_math_png(content)
+        if png:
+            w, h = Image.open(BytesIO(png)).size
+            p.add_run().add_picture(BytesIO(png), height=Inches(h / 200))
+        else:
+            p.add_run(strip_latex("$" + content + "$"))
+
+
+def _export_with_images(
+    parsed: Optional[ParsedProblem], variants: List[AdaptedVariant], title: str
+) -> bytes:
+    from docx import Document
+
+    doc = Document()
+    doc.add_heading(title, level=0)
+    if parsed is not None:
+        _add_rich_paragraph(doc, "原题：", parsed.problem_text)
+        doc.add_paragraph(
+            f"知识点：{'、'.join(parsed.knowledge_points)}　学段：{parsed.grade_band}"
+        )
+    for i, v in enumerate(variants, 1):
+        doc.add_heading(f"第 {i} 题（难度：{v.difficulty}）", level=1)
+        _add_rich_paragraph(doc, "", v.stem)
+        _add_rich_paragraph(doc, "参考答案：", v.answer)
+        _add_rich_paragraph(doc, "解析：", v.solution)
+        doc.add_paragraph(f"知识点：{'、'.join(v.knowledge_points)}")
+        doc.add_paragraph(f"改编理由：{v.adaptation_reason}")
+    buf = BytesIO()
+    doc.save(buf)
+    return buf.getvalue()

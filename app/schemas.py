@@ -105,3 +105,7 @@ class ExportRequest(BaseModel):
     parsed: Optional[ParsedProblem] = None
     variants: List[AdaptedVariant]
     title: str = "改编题目"
+    formula_mode: Literal["omml", "image"] = Field(
+        default="omml",
+        description="公式格式：omml=Word 原生可编辑公式；image=渲染成图片（WPS 等任何软件都能显示，不可编辑）。",
+    )

@@ -248,6 +248,7 @@ $("exportWordBtn").addEventListener("click", async () => {
         parsed: state.parsed,
         variants: state.lastResponse.variants,
         title: "改编题目",
+        formula_mode: $("formulaMode").value,
       }),
     });
     if (!res.ok) {

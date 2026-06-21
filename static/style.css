@@ -167,7 +167,13 @@ button.link {
 }
 .results-header .actions {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
+}
+#formulaMode {
+  width: auto;
+  padding: 5px 8px;
+  font-size: 13px;
 }
 
 /* 结果卡片 */
