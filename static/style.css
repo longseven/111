@@ -248,6 +248,18 @@ button.link {
   z-index: 100;
 }
 
+.gen-error {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  background: var(--bad-bg);
+  border: 1px solid var(--bad);
+  border-radius: 8px;
+  color: var(--bad);
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* 三步进度 */
 .progress {
   display: flex;

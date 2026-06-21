@@ -147,6 +147,16 @@ function hideProgress() {
   $("progress").classList.add("hidden");
 }
 
+const STEP_NAMES = ["识别原题", "改编生成", "不超纲校验"];
+function showGenError(msg) {
+  const el = $("genError");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+function clearGenError() {
+  $("genError").classList.add("hidden");
+}
+
 async function postForm(url, form) {
   const res = await fetch(url, { method: "POST", body: form });
   const data = await res.json();
@@ -173,9 +183,12 @@ $("generateBtn").addEventListener("click", async () => {
   }
   const btn = $("generateBtn");
   btn.disabled = true;
+  clearGenError();
   showProgress();
+  let cur = 0;
   try {
     // ① 识别原题
+    cur = 0;
     setStep(0, "active");
     const form = new FormData();
     if (state.selectedFile) form.append("file", state.selectedFile);
@@ -184,6 +197,7 @@ $("generateBtn").addEventListener("click", async () => {
     setStep(0, "done");
 
     // ② 改编生成
+    cur = 1;
     setStep(1, "active");
     const adaptRes = await postJSON("/api/adapt", {
       parsed,
@@ -192,6 +206,7 @@ $("generateBtn").addEventListener("click", async () => {
     setStep(1, "done");
 
     // ③ 不超纲校验
+    cur = 2;
     setStep(2, "active");
     const verifyRes = await postJSON("/api/verify", {
       parsed,
@@ -208,7 +223,7 @@ $("generateBtn").addEventListener("click", async () => {
     $("step-results").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     markError();
-    toast(err.message);
+    showGenError(`【${STEP_NAMES[cur]}】失败：${err.message}\n（详细报错见运行 ./run.sh 的终端窗口）`);
   } finally {
     btn.disabled = false;
   }

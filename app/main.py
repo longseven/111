@@ -1,6 +1,7 @@
 """FastAPI 应用：解析 / 改编两个接口 + 静态前端。"""
 from __future__ import annotations
 
+import traceback
 from pathlib import Path
 from typing import Optional
 
@@ -34,6 +35,12 @@ app = FastAPI(title="K12 数学题目改编系统")
 
 def _error(status: int, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": message})
+
+
+def _server_error(message: str) -> JSONResponse:
+    """502 错误：同时把完整堆栈打到终端（运行 ./run.sh 的窗口）便于定位。"""
+    traceback.print_exc()
+    return _error(502, message)
 
 
 @app.get("/")
@@ -77,7 +84,7 @@ async def api_parse(
     except RefusalError as exc:
         return _error(422, str(exc))
     except Exception as exc:  # noqa: BLE001 — 兜底返回结构化错误
-        return _error(502, f"解析失败：{exc}")
+        return _server_error(f"解析失败：{exc}")
 
     return JSONResponse(content=parsed.model_dump())
 
@@ -92,7 +99,7 @@ async def api_adapt(payload: AdaptRequest) -> JSONResponse:
     except RefusalError as exc:
         return _error(422, str(exc))
     except Exception as exc:  # noqa: BLE001
-        return _error(502, f"改编失败：{exc}")
+        return _server_error(f"改编失败：{exc}")
 
     return JSONResponse(content={"variants": [v.model_dump() for v in result.variants]})
 
@@ -107,7 +114,7 @@ async def api_verify(payload: VerifyRequest) -> JSONResponse:
     except RefusalError as exc:
         return _error(422, str(exc))
     except Exception as exc:  # noqa: BLE001
-        return _error(502, f"校验失败：{exc}")
+        return _server_error(f"校验失败：{exc}")
 
     return JSONResponse(content={"scope_checks": [c.model_dump() for c in checks.checks]})
 
@@ -145,7 +152,7 @@ async def api_generate(
     except RefusalError as exc:
         return _error(422, str(exc))
     except Exception as exc:  # noqa: BLE001
-        return _error(502, f"生成失败：{exc}")
+        return _server_error(f"生成失败：{exc}")
 
     return JSONResponse(
         content={
@@ -163,7 +170,7 @@ async def api_export(payload: ExportRequest):
             payload.parsed, payload.variants, payload.title, payload.formula_mode
         )
     except Exception as exc:  # noqa: BLE001
-        return _error(502, f"导出失败：{exc}")
+        return _server_error(f"导出失败：{exc}")
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
