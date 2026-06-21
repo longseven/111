@@ -96,10 +96,24 @@
           </select>
           <button class="link" id="exportWordBtn">导出 Word</button>
           <button class="link" id="exportBtn">导出 JSON</button>
+          <button class="link" id="saveBankBtn">★ 存入题库</button>
         </div>
       </div>
+      <p class="hint edit-hint">提示：点每道题的「编辑」可直接修改题干/答案/解析，改完即用于导出与保存。</p>
       <div id="parsedSummary" class="parsed-summary"></div>
       <div id="resultsView"></div>
+    </section>
+
+    <!-- 题库 -->
+    <section class="card" id="step-bank">
+      <div class="results-header">
+        <h2>题库</h2>
+        <div class="actions">
+          <button class="link" id="refreshBankBtn">刷新</button>
+        </div>
+      </div>
+      <p class="hint">保存过的改编结果列在这里，点「调回」即可重新载入到结果区继续编辑或导出。</p>
+      <div id="bankList" class="bank-list"></div>
     </section>
   </main>
 

@@ -236,6 +236,50 @@ button.link {
 
 .variant.flagged { border-color: var(--bad); }
 
+.card-ops {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.edit-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+}
+.edit-actions .primary { margin-top: 0; padding: 7px 16px; font-size: 14px; }
+
+.bank-list { margin-top: 6px; }
+.bank-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.bank-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bank-time { color: var(--muted); font-size: 12px; }
+.bank-ops { display: flex; gap: 14px; }
+
 .toast {
   position: fixed;
   bottom: 24px;

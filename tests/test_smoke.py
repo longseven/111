@@ -339,6 +339,43 @@ def test_export_image_mode_line_breaks():
     assert "<w:br/>" in xml or "<w:br />" in xml
 
 
+# ---------- 题库 store ----------
+def test_bank_store_crud(tmp_path, monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("BANK_DB_PATH", str(tmp_path / "bank.db"))
+    from app import store
+
+    importlib.reload(store)
+    store.init_db()
+
+    assert store.list_records() == []
+    rec = store.save_record(
+        "二次函数改编", "single", {"variants": [{"stem": "x^2"}, {"stem": "y^2"}]}
+    )
+    assert rec["id"] >= 1 and rec["item_count"] == 2
+
+    paper = store.save_record("整卷", "paper", {"groups": [{}, {}, {}]})
+    assert paper["item_count"] == 3
+
+    lst = store.list_records()
+    assert len(lst) == 2 and lst[0]["id"] == paper["id"]  # 倒序，最新在前
+
+    full = store.get_record(rec["id"])
+    assert full["payload"]["variants"][0]["stem"] == "x^2"
+
+    assert store.delete_record(rec["id"]) is True
+    assert store.get_record(rec["id"]) is None
+    assert store.delete_record(999999) is False
+
+
+def test_bank_save_request_schema():
+    from app.schemas import BankSaveRequest
+
+    r = BankSaveRequest(title="t", kind="paper", payload={"groups": []})
+    assert r.kind == "paper" and BankSaveRequest(**r.model_dump()).title == "t"
+
+
 # ---------- .env 加载 ----------
 def test_load_dotenv(tmp_path):
     import os

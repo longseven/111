@@ -21,11 +21,13 @@ from .claude_service import (
 from .config import get_settings
 from .content import UnsupportedFileError, build_problem_parts
 from .export import export_docx, export_paper_docx
+from . import store
 from .schemas import (
     AdaptConditions,
     AdaptRequest,
     AdaptResult,
     AnswerVerifyRequest,
+    BankSaveRequest,
     ExportPaperRequest,
     ExportRequest,
     VerifyRequest,
@@ -35,6 +37,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(title="K12 数学题目改编系统")
+store.init_db()
 
 
 @app.middleware("http")
@@ -247,6 +250,47 @@ async def api_export(payload: ExportRequest):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": 'attachment; filename="adapted_problems.docx"'},
     )
+
+
+# ---------- 题库：保存 / 列表 / 读取 / 删除 ----------
+@app.post("/api/bank/save")
+async def api_bank_save(payload: BankSaveRequest) -> JSONResponse:
+    try:
+        rec = store.save_record(payload.title, payload.kind, payload.payload)
+    except Exception as exc:  # noqa: BLE001
+        return _server_error(f"保存题库失败：{exc}")
+    return JSONResponse(content=rec)
+
+
+@app.get("/api/bank/list")
+async def api_bank_list() -> JSONResponse:
+    try:
+        records = store.list_records()
+    except Exception as exc:  # noqa: BLE001
+        return _server_error(f"读取题库失败：{exc}")
+    return JSONResponse(content={"records": records})
+
+
+@app.get("/api/bank/{rec_id}")
+async def api_bank_get(rec_id: int) -> JSONResponse:
+    try:
+        rec = store.get_record(rec_id)
+    except Exception as exc:  # noqa: BLE001
+        return _server_error(f"读取题库失败：{exc}")
+    if rec is None:
+        return _error(404, "记录不存在或已删除。")
+    return JSONResponse(content=rec)
+
+
+@app.delete("/api/bank/{rec_id}")
+async def api_bank_delete(rec_id: int) -> JSONResponse:
+    try:
+        ok = store.delete_record(rec_id)
+    except Exception as exc:  # noqa: BLE001
+        return _server_error(f"删除题库失败：{exc}")
+    if not ok:
+        return _error(404, "记录不存在或已删除。")
+    return JSONResponse(content={"ok": True})
 
 
 # 静态资源（CSS/JS）。放在路由定义之后，避免覆盖 API 路径。

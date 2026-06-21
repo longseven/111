@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -149,4 +149,13 @@ class ExportRequest(BaseModel):
     formula_mode: Literal["omml", "image"] = Field(
         default="omml",
         description="公式格式：omml=Word 原生可编辑公式；image=渲染成图片（WPS 等任何软件都能显示，不可编辑）。",
+    )
+
+
+# ---------- 题库（本地保存/调回） ----------
+class BankSaveRequest(BaseModel):
+    title: str = Field(default="未命名", description="本条记录的标题。")
+    kind: Literal["single", "paper"] = Field(default="single", description="single=单题改编，paper=整卷。")
+    payload: Dict[str, Any] = Field(
+        description="前端结果数据：single 为 {parsed, variants, scope_checks, answer_checks}；paper 为 {groups}。"
     )

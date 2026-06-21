@@ -92,6 +92,10 @@ OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt
 | `POST` | `/api/split` | `multipart/form-data`：`file`/`text` → 返回 `{problems}`（整卷拆分为多道题） |
 | `POST` | `/api/export_paper` | JSON：`{groups, title, formula_mode}` → 返回 `.docx`（整卷组卷导出） |
 | `POST` | `/api/export` | JSON：`{parsed, variants, title}` → 返回 `.docx`（公式为 Word 原生 OMML，MathType 兼容） |
+| `POST` | `/api/bank/save` | JSON：`{title, kind, payload}` → 存入本地题库，返回记录元信息 |
+| `GET` | `/api/bank/list` | 列出题库记录（id/标题/类型/题数/时间，倒序） |
+| `GET` | `/api/bank/{id}` | 读取单条记录全文（含 payload），用于「调回」结果区 |
+| `DELETE` | `/api/bank/{id}` | 删除单条题库记录 |
 
 支持的上传类型：图片（png/jpg/jpeg/webp/gif）、PDF、文本（txt/md），或直接粘贴文本。
 
@@ -109,6 +113,14 @@ OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt
 
 说明：程序无法直接生成 MathType 私有的 OLE 公式对象（闭源格式无开放库可写）；OMML 是可程序化
 生成、且 MathType 能一键转换的标准目标，图片模式则保证到处都能显示。
+
+## 题库与在线编辑
+
+- **在线编辑**：结果区每道题有「编辑」按钮，可直接改题干 / 答案 / 解析 / 改编理由 /
+  知识点 / 难度，保存后即用于导出与存库——模型偶有小瑕疵时无需重生成。
+- **题库**：点「★ 存入题库」把当前结果（单题或整卷）存到本地 SQLite，页面底部「题库」
+  列表可「调回」继续编辑/导出或「删除」。数据库默认在 `data/bank.db`（已 gitignore），
+  可用环境变量 `BANK_DB_PATH` 改位置。
 
 ## 测试
 

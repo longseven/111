@@ -380,7 +380,10 @@ function variantCardHtml(v, displayIndex, opts = {}) {
       <div class="field reason"><div class="label">改编理由</div>${escBr(v.adaptation_reason)}</div>
       <div class="field"><div class="label">不超纲自检</div>${esc(v.within_scope_note)}</div>
       ${checkReason}
-      <button class="link" data-copy="${cid}">复制本题</button>
+      <div class="card-ops">
+        <button class="link" data-edit="${cid}">编辑</button>
+        <button class="link" data-copy="${cid}">复制本题</button>
+      </div>
     </div>`;
 }
 
@@ -392,6 +395,70 @@ function attachCopyHandlers() {
       navigator.clipboard.writeText(txt).then(() => toast("已复制到剪贴板"));
     })
   );
+}
+
+// ---------- 在线编辑 ----------
+function attachEditHandlers() {
+  document.querySelectorAll("[data-edit]").forEach((b) =>
+    b.addEventListener("click", () => openVariantEditor(b.dataset.edit))
+  );
+}
+
+const _EDIT_FIELDS = [
+  { f: "stem", label: "题干", rows: 3 },
+  { f: "answer", label: "参考答案", rows: 2 },
+  { f: "solution", label: "解析", rows: 3 },
+  { f: "adaptation_reason", label: "改编理由", rows: 2 },
+  { f: "within_scope_note", label: "不超纲自检", rows: 2 },
+];
+
+function openVariantEditor(cid) {
+  const v = copyRegistry[Number(cid)];
+  const btn = document.querySelector(`[data-edit="${cid}"]`);
+  if (!btn) return;
+  const card = btn.closest(".variant");
+  const fieldsHtml = _EDIT_FIELDS
+    .map(
+      (cfg) =>
+        `<label class="edit-field"><span>${cfg.label}</span><textarea data-f="${cfg.f}" rows="${cfg.rows}"></textarea></label>`
+    )
+    .join("");
+  card.innerHTML = `
+    <h3>编辑题目</h3>
+    ${fieldsHtml}
+    <label class="edit-field"><span>知识点（逗号分隔）</span><input type="text" data-f="kp" /></label>
+    <label class="edit-field"><span>难度</span><input type="text" data-f="difficulty" /></label>
+    <div class="edit-actions">
+      <button class="primary" data-save>保存</button>
+      <button class="link" data-cancel>取消</button>
+    </div>`;
+  _EDIT_FIELDS.forEach((cfg) => {
+    card.querySelector(`[data-f="${cfg.f}"]`).value = v[cfg.f] || "";
+  });
+  card.querySelector('[data-f="kp"]').value = (v.knowledge_points || []).join("，");
+  card.querySelector('[data-f="difficulty"]').value = v.difficulty || "";
+  card.querySelector("[data-save]").addEventListener("click", () => {
+    _EDIT_FIELDS.forEach((cfg) => {
+      v[cfg.f] = card.querySelector(`[data-f="${cfg.f}"]`).value;
+    });
+    v.knowledge_points = card
+      .querySelector('[data-f="kp"]')
+      .value.split(/[,，]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    v.difficulty = card.querySelector('[data-f="difficulty"]').value.trim();
+    rerender();
+    toast("已保存修改（导出/存库将使用新内容）");
+  });
+  card.querySelector("[data-cancel]").addEventListener("click", rerender);
+}
+
+// 按最近一次渲染上下文重绘结果区（编辑后复用）
+function rerender() {
+  const lr = state.lastRender;
+  if (!lr) return;
+  if (lr.kind === "paper") renderPaper(lr.groups);
+  else renderResults(lr.data);
 }
 
 function renderResults(data) {
@@ -413,6 +480,8 @@ function renderResults(data) {
   $("resultsView").innerHTML = html;
   typeset($("resultsView"));
   attachCopyHandlers();
+  attachEditHandlers();
+  state.lastRender = { kind: "single", data };
 }
 
 function renderPaper(groups) {
@@ -435,6 +504,8 @@ function renderPaper(groups) {
   typeset($("resultsView"));
   typeset($("parsedSummary"));
   attachCopyHandlers();
+  attachEditHandlers();
+  state.lastRender = { kind: "paper", groups };
 }
 
 // ---------- 导出 ----------
@@ -492,3 +563,128 @@ $("exportBtn").addEventListener("click", () => {
   a.click();
   URL.revokeObjectURL(url);
 });
+
+// ---------- 题库 ----------
+function defaultBankTitle() {
+  const p = state.parsed;
+  const base = p && p.problem_text ? p.problem_text.replace(/\s+/g, "").slice(0, 12) : "改编结果";
+  const d = new Date();
+  const ts = `${d.getMonth() + 1}-${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${base}（${ts}）`;
+}
+
+async function saveToBank() {
+  const lr = state.lastRender;
+  if (!lr) {
+    toast("请先生成结果再保存");
+    return;
+  }
+  let kind, payload;
+  if (lr.kind === "paper") {
+    kind = "paper";
+    payload = { groups: lr.groups || [] };
+  } else {
+    kind = "single";
+    payload = {
+      parsed: state.parsed || null,
+      variants: lr.data.variants || [],
+      scope_checks: lr.data.scope_checks || [],
+      answer_checks: lr.data.answer_checks || [],
+    };
+  }
+  const title = prompt("给这条记录起个名字：", defaultBankTitle());
+  if (title === null) return;
+  try {
+    await postJSON("/api/bank/save", { title: title || "未命名", kind, payload });
+    toast("已存入题库");
+    loadBankList();
+  } catch (err) {
+    toast("保存失败：" + err.message);
+  }
+}
+
+async function loadBankList() {
+  try {
+    const res = await fetch("/api/bank/list");
+    const data = await res.json();
+    renderBankList(data.records || []);
+  } catch (e) {
+    $("bankList").innerHTML = '<p class="hint">题库读取失败。</p>';
+  }
+}
+
+function renderBankList(records) {
+  if (!records.length) {
+    $("bankList").innerHTML = '<p class="hint">题库为空，生成结果后点「★ 存入题库」即可保存。</p>';
+    return;
+  }
+  $("bankList").innerHTML = records
+    .map(
+      (r) => `
+    <div class="bank-item" data-id="${r.id}">
+      <div class="bank-meta">
+        <b>${esc(r.title)}</b>
+        <span class="tag">${r.kind === "paper" ? "整卷" : "单题"} · ${r.item_count} 题</span>
+        <span class="bank-time">${esc(r.created_at)}</span>
+      </div>
+      <div class="bank-ops">
+        <button class="link" data-load="${r.id}">调回</button>
+        <button class="link" data-del="${r.id}">删除</button>
+      </div>
+    </div>`
+    )
+    .join("");
+  $("bankList")
+    .querySelectorAll("[data-load]")
+    .forEach((b) => b.addEventListener("click", () => loadBankRecord(b.dataset.load)));
+  $("bankList")
+    .querySelectorAll("[data-del]")
+    .forEach((b) => b.addEventListener("click", () => deleteBankRecord(b.dataset.del)));
+}
+
+async function loadBankRecord(id) {
+  try {
+    const res = await fetch(`/api/bank/${id}`);
+    const rec = await res.json();
+    if (!res.ok) throw new Error(rec.error || "调回失败");
+    const p = rec.payload || {};
+    if (rec.kind === "paper") {
+      state.mode = "paper";
+      state.paperGroups = p.groups || [];
+      $("parsedSummary").innerHTML = "";
+      renderPaper(state.paperGroups);
+    } else {
+      state.mode = "single";
+      state.parsed = p.parsed || null;
+      state.lastResponse = { variants: p.variants || [] };
+      if (p.parsed) renderParsedSummary(p.parsed);
+      else $("parsedSummary").innerHTML = "";
+      renderResults({
+        variants: p.variants || [],
+        scope_checks: p.scope_checks || [],
+        answer_checks: p.answer_checks || [],
+      });
+    }
+    show("step-results");
+    $("step-results").scrollIntoView({ behavior: "smooth", block: "start" });
+    toast("已调回：" + (rec.title || ""));
+  } catch (err) {
+    toast(err.message || "调回失败");
+  }
+}
+
+async function deleteBankRecord(id) {
+  if (!confirm("确认从题库删除这条记录？")) return;
+  try {
+    const res = await fetch(`/api/bank/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error();
+    toast("已删除");
+    loadBankList();
+  } catch (e) {
+    toast("删除失败");
+  }
+}
+
+$("saveBankBtn").addEventListener("click", saveToBank);
+$("refreshBankBtn").addEventListener("click", loadBankList);
+loadBankList();
