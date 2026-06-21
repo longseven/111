@@ -18,7 +18,13 @@ from .claude_service import (
 from .config import get_settings
 from .content import UnsupportedFileError, build_problem_parts
 from .export import export_docx
-from .schemas import AdaptConditions, AdaptRequest, AdaptResponse, ExportRequest
+from .schemas import (
+    AdaptConditions,
+    AdaptRequest,
+    AdaptResult,
+    ExportRequest,
+    VerifyRequest,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -78,9 +84,9 @@ async def api_parse(
 
 @app.post("/api/adapt")
 async def api_adapt(payload: AdaptRequest) -> JSONResponse:
+    """第 2 步：按条件改编（不含校验，便于前端分步显示进度）。"""
     try:
         result = adapt_problem(payload.parsed, payload.conditions)
-        checks = verify_in_scope(payload.parsed, result)
     except ConfigError as exc:
         return _error(500, str(exc))
     except RefusalError as exc:
@@ -88,8 +94,22 @@ async def api_adapt(payload: AdaptRequest) -> JSONResponse:
     except Exception as exc:  # noqa: BLE001
         return _error(502, f"改编失败：{exc}")
 
-    response = AdaptResponse(variants=result.variants, scope_checks=checks.checks)
-    return JSONResponse(content=response.model_dump())
+    return JSONResponse(content={"variants": [v.model_dump() for v in result.variants]})
+
+
+@app.post("/api/verify")
+async def api_verify(payload: VerifyRequest) -> JSONResponse:
+    """第 3 步：不超纲独立校验。"""
+    try:
+        checks = verify_in_scope(payload.parsed, AdaptResult(variants=payload.variants))
+    except ConfigError as exc:
+        return _error(500, str(exc))
+    except RefusalError as exc:
+        return _error(422, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return _error(502, f"校验失败：{exc}")
+
+    return JSONResponse(content={"scope_checks": [c.model_dump() for c in checks.checks]})
 
 
 @app.post("/api/generate")

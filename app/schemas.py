@@ -101,6 +101,11 @@ class AdaptRequest(BaseModel):
     conditions: AdaptConditions
 
 
+class VerifyRequest(BaseModel):
+    parsed: ParsedProblem
+    variants: List[AdaptedVariant]
+
+
 class ExportRequest(BaseModel):
     parsed: Optional[ParsedProblem] = None
     variants: List[AdaptedVariant]

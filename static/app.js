@@ -129,7 +129,42 @@ function getConditions() {
   };
 }
 
-// ---------- 一键生成 ----------
+// ---------- 进度条 ----------
+function showProgress() {
+  const el = $("progress");
+  el.querySelectorAll(".pstep").forEach((s) => (s.className = "pstep"));
+  el.classList.remove("hidden");
+}
+function setStep(i, st) {
+  const s = $("progress").querySelector(`.pstep[data-step="${i}"]`);
+  if (s) s.className = "pstep " + st; // active | done | error
+}
+function markError() {
+  const a = $("progress").querySelector(".pstep.active");
+  if (a) a.className = "pstep error";
+}
+function hideProgress() {
+  $("progress").classList.add("hidden");
+}
+
+async function postForm(url, form) {
+  const res = await fetch(url, { method: "POST", body: form });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
+  return data;
+}
+async function postJSON(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
+  return data;
+}
+
+// ---------- 一键生成（分三步显示进度） ----------
 $("generateBtn").addEventListener("click", async () => {
   const text = $("pasteText").value.trim();
   if (!state.selectedFile && !text) {
@@ -137,27 +172,45 @@ $("generateBtn").addEventListener("click", async () => {
     return;
   }
   const btn = $("generateBtn");
-  setBusy(btn, true, "生成中…（解析→改编→校验）");
+  btn.disabled = true;
+  showProgress();
   try {
+    // ① 识别原题
+    setStep(0, "active");
     const form = new FormData();
     if (state.selectedFile) form.append("file", state.selectedFile);
     if (text) form.append("text", text);
-    form.append("conditions", JSON.stringify(getConditions()));
+    const parsed = await postForm("/api/parse", form);
+    setStep(0, "done");
 
-    const res = await fetch("/api/generate", { method: "POST", body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `生成失败 (${res.status})`);
+    // ② 改编生成
+    setStep(1, "active");
+    const adaptRes = await postJSON("/api/adapt", {
+      parsed,
+      conditions: getConditions(),
+    });
+    setStep(1, "done");
 
-    state.parsed = data.parsed;
-    state.lastResponse = { variants: data.variants };
-    renderParsedSummary(data.parsed);
-    renderResults(data);
+    // ③ 不超纲校验
+    setStep(2, "active");
+    const verifyRes = await postJSON("/api/verify", {
+      parsed,
+      variants: adaptRes.variants,
+    });
+    setStep(2, "done");
+
+    state.parsed = parsed;
+    state.lastResponse = { variants: adaptRes.variants };
+    renderParsedSummary(parsed);
+    renderResults({ variants: adaptRes.variants, scope_checks: verifyRes.scope_checks });
     show("step-results");
+    setTimeout(hideProgress, 700);
     $("step-results").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
+    markError();
     toast(err.message);
   } finally {
-    setBusy(btn, false, "生成新题");
+    btn.disabled = false;
   }
 });
 

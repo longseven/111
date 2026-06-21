@@ -85,8 +85,9 @@ OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt
 | `GET` | `/` | 前端页面 |
 | `GET` | `/api/health` | 健康检查（是否配置了 key、当前模型） |
 | `POST` | `/api/generate` | `multipart/form-data`：`file`（可选）+ `text`（可选）+ `conditions`（JSON 串）→ 一步完成解析+改编+校验，返回 `{parsed, variants, scope_checks}` |
-| `POST` | `/api/parse` | `multipart/form-data`：`file`（可选）+ `text`（可选）→ 返回 `ParsedProblem`（分步用） |
-| `POST` | `/api/adapt` | JSON：`{parsed, conditions}` → 返回 `{variants, scope_checks}`（分步用） |
+| `POST` | `/api/parse` | `multipart/form-data`：`file`（可选）+ `text`（可选）→ 返回 `ParsedProblem`（分步①，前端显示进度用） |
+| `POST` | `/api/adapt` | JSON：`{parsed, conditions}` → 返回 `{variants}`（分步②） |
+| `POST` | `/api/verify` | JSON：`{parsed, variants}` → 返回 `{scope_checks}`（分步③，不超纲校验） |
 | `POST` | `/api/export` | JSON：`{parsed, variants, title}` → 返回 `.docx`（公式为 Word 原生 OMML，MathType 兼容） |
 
 支持的上传类型：图片（png/jpg/jpeg/webp/gif）、PDF、文本（txt/md），或直接粘贴文本。

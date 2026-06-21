@@ -248,6 +248,51 @@ button.link {
   z-index: 100;
 }
 
+/* 三步进度 */
+.progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 16px 0 4px;
+}
+.pstep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.pstep .pdot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  box-sizing: border-box;
+}
+.pstep.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+.pstep.active .pdot {
+  border-color: var(--accent);
+  border-top-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+.pstep.done {
+  color: var(--ok);
+}
+.pstep.done .pdot {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+.pstep.error {
+  color: var(--bad);
+}
+.pstep.error .pdot {
+  border-color: var(--bad);
+  background: var(--bad);
+}
+
 .spinner {
   display: inline-block;
   width: 14px; height: 14px;
