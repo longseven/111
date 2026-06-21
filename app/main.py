@@ -33,6 +33,14 @@ STATIC_DIR = BASE_DIR / "static"
 app = FastAPI(title="K12 数学题目改编系统")
 
 
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    """禁用缓存：更新代码后普通刷新即可拿到最新前端，无需强制刷新。"""
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
 def _error(status: int, message: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": message})
 
