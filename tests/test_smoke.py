@@ -276,6 +276,37 @@ def test_render_math_png_handles_le_abbrev():
     assert png is not None and png[:8] == b"\x89PNG\r\n\x1a\n"
 
 
+def test_format_choices_splits_options():
+    from app.claude_service import format_choices
+
+    out = format_choices("下列说法错误的是（） A. p=1/2 B. D(X)=1 C. P=3/8 D. E=2")
+    lines = [ln.strip() for ln in out.split("\n")]
+    assert any(ln.startswith("A.") for ln in lines)
+    assert any(ln.startswith("D.") for ln in lines)
+    assert sum(ln[:2] in ("A.", "B.", "C.", "D.") for ln in lines) == 4
+
+
+def test_format_choices_leaves_geometry_points():
+    from app.claude_service import format_choices
+
+    s = "在三角形 ABC 中，点 D、E、F 分别是中点，求 AD 的长。"
+    assert format_choices(s) == s  # 无 A. 式句点标记，不误伤
+
+
+def test_export_image_mode_line_breaks():
+    import io
+    import zipfile
+
+    from app.export import export_docx
+
+    v = _sample_variants()[0]
+    v.stem = "下列错误的是（）\nA. $p=1$\nB. $q=2$\nC. $r=3$\nD. $s=4$"
+    data = export_docx(None, [v], "t", formula_mode="image")
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        xml = z.read("word/document.xml").decode("utf-8")
+    assert "<w:br/>" in xml or "<w:br />" in xml
+
+
 # ---------- .env 加载 ----------
 def test_load_dotenv(tmp_path):
     import os

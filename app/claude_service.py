@@ -5,6 +5,7 @@ ConfigError / RefusalError 从 llm 重新导出，便于 main.py 统一捕获。
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 
 from .content import text_part
@@ -23,12 +24,33 @@ __all__ = [
     "parse_problem",
     "adapt_problem",
     "verify_in_scope",
+    "format_choices",
 ]
+
+# 选项标记：单个大写字母 A-H 紧跟 . 或 ．，且前面不是字母/数字
+_OPTION_MARKER = re.compile(r"(?<![A-Za-z0-9])([A-H])[.．]")
+
+
+def format_choices(text: str) -> str:
+    """选择题：把各选项（A. B. C. …）分别独立成行。
+
+    仅当检测到 ≥3 个不同选项标记时才生效，避免误伤几何题里内联的点名
+    （如「点 A、B、C」用顿号、且字母后无句点，不会匹配）。
+    """
+    if not text:
+        return text
+    letters = _OPTION_MARKER.findall(text)
+    if len(set(letters)) < 3:
+        return text
+    out = re.sub(r"\s*(?<![A-Za-z0-9])([A-H][.．])", lambda m: "\n" + m.group(1), text)
+    return out.lstrip("\n").rstrip()
 
 
 def parse_problem(parts: List[Dict[str, Any]]) -> ParsedProblem:
     """第 1 步：解析原题，建立不超纲边界。parts 为中性内容部件。"""
-    return structured_completion(PARSE_SYSTEM, parts, ParsedProblem)
+    parsed = structured_completion(PARSE_SYSTEM, parts, ParsedProblem)
+    parsed.problem_text = format_choices(parsed.problem_text)
+    return parsed
 
 
 def adapt_problem(parsed: ParsedProblem, conditions: AdaptConditions) -> AdaptResult:
@@ -46,7 +68,10 @@ def adapt_problem(parsed: ParsedProblem, conditions: AdaptConditions) -> AdaptRe
             + conditions.extra_instructions.strip()
             + "（在不超纲前提下尽量满足）。"
         )
-    return structured_completion(ADAPT_SYSTEM, [text_part(user_text)], AdaptResult)
+    result = structured_completion(ADAPT_SYSTEM, [text_part(user_text)], AdaptResult)
+    for v in result.variants:
+        v.stem = format_choices(v.stem)
+    return result
 
 
 def verify_in_scope(parsed: ParsedProblem, result: AdaptResult) -> ScopeCheckResult:

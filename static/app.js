@@ -24,6 +24,11 @@ function esc(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// 转义后把换行变成 <br>，让选择题选项等按行显示
+function escBr(s) {
+  return esc(s).replace(/\n/g, "<br>");
+}
+
 // 用 KaTeX 渲染元素内的 $...$ 公式；若 KaTeX 未加载（如 CDN 不通），退回纯文本兜底
 function typeset(el) {
   if (window.renderMathInElement) {
@@ -151,7 +156,7 @@ function renderParsed(p) {
   const kps = (p.knowledge_points || [])
     .map((k) => `<span class="tag">${esc(k)}</span>`).join("");
   $("parsedView").innerHTML = `
-    <div class="kv"><b>题干</b>${esc(p.problem_text)}</div>
+    <div class="kv"><b>题干</b>${escBr(p.problem_text)}</div>
     <div class="kv"><b>知识点</b>${kps}</div>
     <div class="kv"><b>学段</b>${esc(p.grade_band)}</div>
     <div class="kv"><b>难度</b>${esc(p.difficulty)}　<b>题型</b>${esc(p.problem_type)}</div>
@@ -213,9 +218,9 @@ function renderResults(data) {
     return `
       <div class="variant ${passed ? "" : "flagged"}">
         <h3>新题 ${i + 1} ${badge}</h3>
-        <div class="field stem"><div class="label">题干</div>${esc(v.stem)}</div>
-        <div class="field"><div class="label">参考答案</div>${esc(v.answer)}</div>
-        <div class="field"><div class="label">解析</div>${esc(v.solution)}</div>
+        <div class="field stem"><div class="label">题干</div>${escBr(v.stem)}</div>
+        <div class="field"><div class="label">参考答案</div>${escBr(v.answer)}</div>
+        <div class="field"><div class="label">解析</div>${escBr(v.solution)}</div>
         <div class="field"><div class="label">知识点</div>${kps}　难度：${esc(v.difficulty)}</div>
         <div class="field reason"><div class="label">改编理由</div>${esc(v.adaptation_reason)}</div>
         <div class="field"><div class="label">不超纲自检</div>${esc(v.within_scope_note)}</div>

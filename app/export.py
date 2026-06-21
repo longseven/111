@@ -61,7 +61,10 @@ def _export_with_pandoc(md: str) -> bytes:
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.docx"
         pypandoc.convert_text(
-            md, "docx", format="markdown+tex_math_dollars", outputfile=str(out)
+            md,
+            "docx",
+            format="markdown+tex_math_dollars+hard_line_breaks",
+            outputfile=str(out),
         )
         return out.read_bytes()
 
@@ -92,6 +95,15 @@ def _export_with_docx(
 ) -> bytes:
     from docx import Document
 
+    def add_lines(label: str, text: str) -> None:
+        p = doc.add_paragraph()
+        if label:
+            p.add_run(label).bold = True
+        for li, line in enumerate(text.split("\n")):
+            if li > 0:
+                p.add_run().add_break()
+            p.add_run(strip_latex(line))
+
     doc = Document()
     doc.add_heading(title, level=0)
     doc.add_paragraph(
@@ -99,15 +111,15 @@ def _export_with_docx(
         "公式将变为可在 Word/MathType 中编辑的格式。"
     )
     if parsed is not None:
-        doc.add_paragraph(f"原题：{strip_latex(parsed.problem_text)}")
+        add_lines("原题：", parsed.problem_text)
         doc.add_paragraph(
             f"知识点：{'、'.join(parsed.knowledge_points)}　学段：{parsed.grade_band}"
         )
     for i, v in enumerate(variants, 1):
         doc.add_heading(f"第 {i} 题（难度：{v.difficulty}）", level=1)
-        doc.add_paragraph(strip_latex(v.stem))
-        doc.add_paragraph(f"参考答案：{strip_latex(v.answer)}")
-        doc.add_paragraph(f"解析：{strip_latex(v.solution)}")
+        add_lines("", v.stem)
+        add_lines("参考答案：", v.answer)
+        add_lines("解析：", v.solution)
         doc.add_paragraph(f"知识点：{'、'.join(v.knowledge_points)}")
         doc.add_paragraph(f"改编理由：{v.adaptation_reason}")
     buf = BytesIO()
@@ -188,16 +200,19 @@ def _add_rich_paragraph(doc, label: str, text: str) -> None:
     if label:
         run = p.add_run(label)
         run.bold = True
-    for kind, content in _split_segments(text):
-        if kind == "text":
-            p.add_run(content)
-            continue
-        png = _render_math_png(content)
-        if png:
-            w, h = Image.open(BytesIO(png)).size
-            p.add_run().add_picture(BytesIO(png), height=Inches(h / 200))
-        else:
-            p.add_run(strip_latex("$" + content + "$"))
+    for li, line in enumerate(text.split("\n")):
+        if li > 0:
+            p.add_run().add_break()  # 选择题选项等：另起一行
+        for kind, content in _split_segments(line):
+            if kind == "text":
+                p.add_run(content)
+                continue
+            png = _render_math_png(content)
+            if png:
+                w, h = Image.open(BytesIO(png)).size
+                p.add_run().add_picture(BytesIO(png), height=Inches(h / 200))
+            else:
+                p.add_run(strip_latex("$" + content + "$"))
 
 
 def _export_with_images(
