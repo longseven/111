@@ -24,6 +24,49 @@ function esc(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// 用 KaTeX 渲染元素内的 $...$ 公式；若 KaTeX 未加载（如 CDN 不通），退回纯文本兜底
+function typeset(el) {
+  if (window.renderMathInElement) {
+    try {
+      renderMathInElement(el, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false },
+          { left: "\\(", right: "\\)", display: false },
+          { left: "\\[", right: "\\]", display: true },
+        ],
+        throwOnError: false,
+      });
+      return;
+    } catch (e) {
+      /* 落到下面的兜底 */
+    }
+  }
+  el.innerHTML = degradeMath(el.innerHTML);
+}
+
+// KaTeX 不可用时，把常见 LaTeX 转成可读纯文本，保证不比原来更难看
+function degradeMath(html) {
+  return html.replace(/\$\$?([^$]+?)\$\$?/g, (_, m) =>
+    m
+      .replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "($1)/($2)")
+      .replace(/\\sqrt\s*\{([^{}]*)\}/g, "√($1)")
+      .replace(/\\times/g, "×")
+      .replace(/\\cdot/g, "·")
+      .replace(/\\div/g, "÷")
+      .replace(/\\le(?:q)?/g, "≤")
+      .replace(/\\ge(?:q)?/g, "≥")
+      .replace(/\\neq/g, "≠")
+      .replace(/\\pm/g, "±")
+      .replace(/\\sim/g, "~")
+      .replace(/\\%/g, "%")
+      .replace(/\\left|\\right/g, "")
+      .replace(/[{}]/g, "")
+      .replace(/\\[a-zA-Z]+/g, "")
+      .trim()
+  );
+}
+
 function setBusy(btn, busy, label) {
   if (busy) {
     btn.disabled = true;
@@ -113,6 +156,7 @@ function renderParsed(p) {
     <div class="kv"><b>学段</b>${esc(p.grade_band)}</div>
     <div class="kv"><b>难度</b>${esc(p.difficulty)}　<b>题型</b>${esc(p.problem_type)}</div>
   `;
+  typeset($("parsedView"));
 }
 
 // ---------- 第 2 步：改编条件 ----------
@@ -181,6 +225,7 @@ function renderResults(data) {
   }).join("");
 
   $("resultsView").innerHTML = html;
+  typeset($("resultsView"));
 
   document.querySelectorAll("[data-copy]").forEach((b) =>
     b.addEventListener("click", () => {
