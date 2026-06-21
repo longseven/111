@@ -232,6 +232,7 @@ button.link {
 }
 .badge.ok { background: var(--ok-bg); color: var(--ok); }
 .badge.bad { background: var(--bad-bg); color: var(--bad); }
+.badge.neutral { background: #eef2f7; color: var(--muted); }
 
 .variant.flagged { border-color: var(--bad); }
 

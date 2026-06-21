@@ -216,19 +216,28 @@ $("generateBtn").addEventListener("click", async () => {
     });
     setStep(1, "done");
 
-    // ③ 不超纲校验
+    // ③ 不超纲校验（失败也不丢弃已生成的改编结果）
     cur = 2;
     setStep(2, "active");
-    const verifyRes = await postJSON("/api/verify", {
-      parsed,
-      variants: adaptRes.variants,
-    });
-    setStep(2, "done");
+    let scopeChecks = [];
+    try {
+      const verifyRes = await postJSON("/api/verify", {
+        parsed,
+        variants: adaptRes.variants,
+      });
+      scopeChecks = verifyRes.scope_checks;
+      setStep(2, "done");
+    } catch (verr) {
+      setStep(2, "error");
+      showGenError(
+        `不超纲校验未完成：${verr.message}\n（改编结果已照常显示，仅暂缺"不超纲"徽章，可稍后重试）`
+      );
+    }
 
     state.parsed = parsed;
     state.lastResponse = { variants: adaptRes.variants };
     renderParsedSummary(parsed);
-    renderResults({ variants: adaptRes.variants, scope_checks: verifyRes.scope_checks });
+    renderResults({ variants: adaptRes.variants, scope_checks: scopeChecks });
     show("step-results");
     setTimeout(hideProgress, 700);
     $("step-results").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -258,9 +267,10 @@ function renderResults(data) {
   const html = (data.variants || []).map((v, i) => {
     const check = checksByIndex[i];
     const passed = check ? check.passed : true;
-    const badge = passed
-      ? '<span class="badge ok">✓ 不超纲</span>'
-      : '<span class="badge bad">✗ 可能超纲</span>';
+    let badge;
+    if (!check) badge = '<span class="badge neutral">— 未校验</span>';
+    else if (check.passed) badge = '<span class="badge ok">✓ 不超纲</span>';
+    else badge = '<span class="badge bad">✗ 可能超纲</span>';
     const checkReason = check
       ? `<div class="field"><div class="label">校验说明</div>${esc(check.reason)}</div>`
       : "";
