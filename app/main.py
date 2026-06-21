@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .claude_service import (
@@ -17,7 +17,8 @@ from .claude_service import (
 )
 from .config import get_settings
 from .content import UnsupportedFileError, build_problem_parts
-from .schemas import AdaptRequest, AdaptResponse
+from .export import export_docx
+from .schemas import AdaptRequest, AdaptResponse, ExportRequest
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -89,6 +90,19 @@ async def api_adapt(payload: AdaptRequest) -> JSONResponse:
 
     response = AdaptResponse(variants=result.variants, scope_checks=checks.checks)
     return JSONResponse(content=response.model_dump())
+
+
+@app.post("/api/export")
+async def api_export(payload: ExportRequest):
+    try:
+        data = export_docx(payload.parsed, payload.variants, payload.title)
+    except Exception as exc:  # noqa: BLE001
+        return _error(502, f"导出失败：{exc}")
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": 'attachment; filename="adapted_problems.docx"'},
+    )
 
 
 # 静态资源（CSS/JS）。放在路由定义之后，避免覆盖 API 路径。

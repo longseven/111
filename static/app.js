@@ -236,6 +236,40 @@ function renderResults(data) {
   );
 }
 
+$("exportWordBtn").addEventListener("click", async () => {
+  if (!state.lastResponse) return;
+  const btn = $("exportWordBtn");
+  setBusy(btn, true, "导出中…");
+  try {
+    const res = await fetch("/api/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        parsed: state.parsed,
+        variants: state.lastResponse.variants,
+        title: "改编题目",
+      }),
+    });
+    if (!res.ok) {
+      let msg = `导出失败 (${res.status})`;
+      try { msg = (await res.json()).error || msg; } catch (e) { /* 非 JSON */ }
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "改编题目.docx";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("已导出 Word");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    setBusy(btn, false, "导出 Word");
+  }
+});
+
 $("exportBtn").addEventListener("click", () => {
   if (!state.lastResponse) return;
   const blob = new Blob([JSON.stringify(state.lastResponse, null, 2)], {

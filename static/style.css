@@ -165,6 +165,10 @@ button.link {
   align-items: center;
   justify-content: space-between;
 }
+.results-header .actions {
+  display: flex;
+  gap: 16px;
+}
 
 /* 结果卡片 */
 .variant {

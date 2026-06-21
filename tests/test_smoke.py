@@ -203,6 +203,58 @@ def test_scope_check_result():
     assert r.checks[0].passed is True
 
 
+# ---------- Word 导出 ----------
+def _sample_variants():
+    return [
+        AdaptedVariant(
+            stem="已知 $X \\sim B(4,p)$，求 $P(X=2)=\\frac{3}{8}$ 是否成立。",
+            answer="成立",
+            solution="$P(X=2)=C_4^2(\\frac{1}{2})^2(\\frac{1}{2})^2=\\frac{3}{8}$。",
+            knowledge_points=["二项分布"],
+            difficulty="易",
+            adaptation_reason="仅改数值。",
+            within_scope_note="未超纲。",
+        )
+    ]
+
+
+def test_build_markdown_contains_math_and_fields():
+    from app.export import build_markdown
+
+    md = build_markdown(None, _sample_variants(), "改编题目")
+    assert "# 改编题目" in md
+    assert "\\frac{3}{8}" in md  # LaTeX 公式原样进入 markdown
+    assert "改编理由" in md
+
+
+def test_strip_latex_fallback():
+    from app.export import strip_latex
+
+    out = strip_latex("结果为 $\\frac{3}{8}$ 且 $a \\le b$")
+    assert "(3)/(8)" in out and "≤" in out and "$" not in out
+
+
+def test_export_docx_is_valid_docx():
+    import io
+    import zipfile
+
+    from app.export import export_docx
+
+    data = export_docx(None, _sample_variants(), "改编题目")
+    assert data[:2] == b"PK"  # zip 魔数
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        names = z.namelist()
+        assert "word/document.xml" in names
+        xml = z.read("word/document.xml").decode("utf-8")
+    # 装了 pandoc 则应含 OMML 公式；否则为纯文本兜底，至少含题目内容
+    from app.export import pandoc_available
+
+    if pandoc_available():
+        assert "oMath" in xml
+    else:
+        assert "改编题目" in xml or "B(4" in xml
+
+
 # ---------- .env 加载 ----------
 def test_load_dotenv(tmp_path):
     import os

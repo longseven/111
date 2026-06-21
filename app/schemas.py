@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -99,3 +99,9 @@ class AdaptResponse(BaseModel):
 class AdaptRequest(BaseModel):
     parsed: ParsedProblem
     conditions: AdaptConditions
+
+
+class ExportRequest(BaseModel):
+    parsed: Optional[ParsedProblem] = None
+    variants: List[AdaptedVariant]
+    title: str = "改编题目"

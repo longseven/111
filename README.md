@@ -86,8 +86,20 @@ OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt
 | `GET` | `/api/health` | 健康检查（是否配置了 key、当前模型） |
 | `POST` | `/api/parse` | `multipart/form-data`：`file`（可选）+ `text`（可选）→ 返回 `ParsedProblem` |
 | `POST` | `/api/adapt` | JSON：`{parsed, conditions}` → 返回 `{variants, scope_checks}` |
+| `POST` | `/api/export` | JSON：`{parsed, variants, title}` → 返回 `.docx`（公式为 Word 原生 OMML，MathType 兼容） |
 
 支持的上传类型：图片（png/jpg/jpeg/webp/gif）、PDF、文本（txt/md），或直接粘贴文本。
+
+## 导出 Word（公式可编辑 / MathType 兼容）
+
+结果区点「导出 Word」即可下载 `.docx`。公式处理：
+
+- 数学公式以 **Word 原生公式（OMML）** 写入，可在 Word 公式编辑器中编辑；在 MathType 里点
+  「Convert Equations → Word 公式转 MathType」即可整篇转成 MathType 公式。
+- 依赖 pandoc，已通过 `pypandoc-binary` 随 `pip install -r requirements.txt` **自带二进制**，
+  无需单独安装。若运行环境确实没有 pandoc，会退回纯文本导出，并在文首提示。
+- 说明：程序无法直接生成 MathType 私有的 OLE 公式对象（闭源格式无开放库可写），
+  OMML 是可程序化生成、且 MathType 能一键转换的标准目标。
 
 ## 测试
 
