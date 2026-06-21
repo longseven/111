@@ -194,7 +194,7 @@ function renderResults(data) {
         <div class="field"><div class="label">参考答案</div>${escBr(v.answer)}</div>
         <div class="field"><div class="label">解析</div>${escBr(v.solution)}</div>
         <div class="field"><div class="label">知识点</div>${kps}　难度：${esc(v.difficulty)}</div>
-        <div class="field reason"><div class="label">改编理由</div>${esc(v.adaptation_reason)}</div>
+        <div class="field reason"><div class="label">改编理由</div>${escBr(v.adaptation_reason)}</div>
         <div class="field"><div class="label">不超纲自检</div>${esc(v.within_scope_note)}</div>
         ${checkReason}
         <button class="link" data-copy="${i}">复制本题</button>

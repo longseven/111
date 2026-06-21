@@ -66,7 +66,7 @@ class AdaptedVariant(BaseModel):
     knowledge_points: List[str] = Field(description="本新题考查的知识点列表。")
     difficulty: str = Field(description="新题难度，'易'/'中'/'难'。")
     adaptation_reason: str = Field(
-        description="改编理由：具体、真实地说明相对原题改了哪些地方（数值/情境/问法/题型的实际变化）以及如何对应改编条件；不写空泛套话，不声称未发生的改动。"
+        description="改编理由：逐条列出相对原题的具体改动，每条一行，格式「维度：原内容 → 新内容」（如'情境：行程 → 购物'）；只写真实改动，不写空泛套话。"
     )
     within_scope_note: str = Field(
         description="不超纲自检说明：解释本题为何仍在原题知识点与学段范围内。"
