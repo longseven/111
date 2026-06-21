@@ -110,6 +110,19 @@ dropZone.addEventListener("drop", (e) => {
 function selectFile(f) {
   state.selectedFile = f;
   $("fileName").textContent = "已选择：" + f.name;
+  const preview = $("filePreview");
+  if (state.previewUrl) {
+    URL.revokeObjectURL(state.previewUrl);
+    state.previewUrl = null;
+  }
+  if (f.type.startsWith("image/")) {
+    state.previewUrl = URL.createObjectURL(f);
+    preview.innerHTML = `<img src="${state.previewUrl}" alt="已上传题目" />`;
+    preview.classList.remove("hidden");
+  } else {
+    preview.innerHTML = `<div class="file-pdf">📄 ${esc(f.name)}（已上传）</div>`;
+    preview.classList.remove("hidden");
+  }
 }
 
 $("count").addEventListener("input", (e) => {
@@ -176,9 +189,8 @@ async function postJSON(url, body) {
 
 // ---------- 一键生成（分三步显示进度） ----------
 $("generateBtn").addEventListener("click", async () => {
-  const text = $("pasteText").value.trim();
-  if (!state.selectedFile && !text) {
-    toast("请上传文件或粘贴题目文本");
+  if (!state.selectedFile) {
+    toast("请上传题目图片或文件");
     return;
   }
   const btn = $("generateBtn");
@@ -191,8 +203,7 @@ $("generateBtn").addEventListener("click", async () => {
     cur = 0;
     setStep(0, "active");
     const form = new FormData();
-    if (state.selectedFile) form.append("file", state.selectedFile);
-    if (text) form.append("text", text);
+    form.append("file", state.selectedFile);
     const parsed = await postForm("/api/parse", form);
     setStep(0, "done");
 
