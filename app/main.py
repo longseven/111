@@ -18,7 +18,7 @@ from .claude_service import (
 from .config import get_settings
 from .content import UnsupportedFileError, build_problem_parts
 from .export import export_docx
-from .schemas import AdaptRequest, AdaptResponse, ExportRequest
+from .schemas import AdaptConditions, AdaptRequest, AdaptResponse, ExportRequest
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -90,6 +90,50 @@ async def api_adapt(payload: AdaptRequest) -> JSONResponse:
 
     response = AdaptResponse(variants=result.variants, scope_checks=checks.checks)
     return JSONResponse(content=response.model_dump())
+
+
+@app.post("/api/generate")
+async def api_generate(
+    file: Optional[UploadFile] = File(default=None),
+    text: Optional[str] = Form(default=None),
+    conditions: str = Form(default="{}"),
+) -> JSONResponse:
+    """一步到位：上传题目 + 改编条件 → 解析 + 改编 + 不超纲校验。"""
+    settings = get_settings()
+    file_name: Optional[str] = None
+    file_bytes: Optional[bytes] = None
+    if file is not None:
+        data = await file.read()
+        if len(data) > settings.max_upload_bytes:
+            return _error(413, f"文件过大，上限为 {settings.max_upload_bytes // (1024 * 1024)}MB。")
+        file_name, file_bytes = file.filename or "upload", data
+
+    try:
+        cond = AdaptConditions.model_validate_json(conditions)
+    except Exception:  # noqa: BLE001
+        return _error(400, "改编条件格式有误。")
+
+    try:
+        parts = build_problem_parts(file_name, file_bytes, text)
+        parsed = parse_problem(parts)
+        result = adapt_problem(parsed, cond)
+        checks = verify_in_scope(parsed, result)
+    except (UnsupportedFileError, ValueError) as exc:
+        return _error(400, str(exc))
+    except ConfigError as exc:
+        return _error(500, str(exc))
+    except RefusalError as exc:
+        return _error(422, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return _error(502, f"生成失败：{exc}")
+
+    return JSONResponse(
+        content={
+            "parsed": parsed.model_dump(),
+            "variants": [v.model_dump() for v in result.variants],
+            "scope_checks": [c.model_dump() for c in checks.checks],
+        }
+    )
 
 
 @app.post("/api/export")

@@ -9,7 +9,7 @@ const state = {
 };
 
 // ---------- 工具 ----------
-function toast(msg, ms = 2600) {
+function toast(msg, ms = 3000) {
   const el = $("toast");
   el.textContent = msg;
   el.classList.remove("hidden");
@@ -29,7 +29,18 @@ function escBr(s) {
   return esc(s).replace(/\n/g, "<br>");
 }
 
-// 用 KaTeX 渲染元素内的 $...$ 公式；若 KaTeX 未加载（如 CDN 不通），退回纯文本兜底
+function setBusy(btn, busy, label) {
+  if (busy) {
+    btn.disabled = true;
+    btn.dataset.label = btn.textContent;
+    btn.innerHTML = '<span class="spinner"></span>' + (label || "处理中…");
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.label || label;
+  }
+}
+
+// 用 KaTeX 渲染元素内的 $...$ 公式；KaTeX 未加载时退回纯文本兜底
 function typeset(el) {
   if (window.renderMathInElement) {
     try {
@@ -44,13 +55,12 @@ function typeset(el) {
       });
       return;
     } catch (e) {
-      /* 落到下面的兜底 */
+      /* 落到兜底 */
     }
   }
   el.innerHTML = degradeMath(el.innerHTML);
 }
 
-// KaTeX 不可用时，把常见 LaTeX 转成可读纯文本，保证不比原来更难看
 function degradeMath(html) {
   return html.replace(/\$\$?([^$]+?)\$\$?/g, (_, m) =>
     m
@@ -70,28 +80,6 @@ function degradeMath(html) {
       .replace(/\\[a-zA-Z]+/g, "")
       .trim()
   );
-}
-
-function setBusy(btn, busy, label) {
-  if (busy) {
-    btn.disabled = true;
-    btn.dataset.label = btn.textContent;
-    btn.innerHTML = '<span class="spinner"></span>' + (label || "处理中…");
-  } else {
-    btn.disabled = false;
-    btn.textContent = btn.dataset.label || label;
-  }
-}
-
-async function postJSON(url, body) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
-  return data;
 }
 
 // ---------- 文件选择 ----------
@@ -124,54 +112,12 @@ function selectFile(f) {
   $("fileName").textContent = "已选择：" + f.name;
 }
 
-// ---------- 第 1 步：解析 ----------
-$("parseBtn").addEventListener("click", async () => {
-  const text = $("pasteText").value.trim();
-  if (!state.selectedFile && !text) {
-    toast("请上传文件或粘贴题目文本");
-    return;
-  }
-  const btn = $("parseBtn");
-  setBusy(btn, true, "解析中…");
-  try {
-    const form = new FormData();
-    if (state.selectedFile) form.append("file", state.selectedFile);
-    if (text) form.append("text", text);
-    const res = await fetch("/api/parse", { method: "POST", body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `解析失败 (${res.status})`);
-    state.parsed = data;
-    renderParsed(data);
-    show("step-parsed");
-    show("step-conditions");
-    $("step-conditions").scrollIntoView({ behavior: "smooth", block: "start" });
-  } catch (err) {
-    toast(err.message);
-  } finally {
-    setBusy(btn, false, "解析原题");
-  }
-});
-
-function renderParsed(p) {
-  const kps = (p.knowledge_points || [])
-    .map((k) => `<span class="tag">${esc(k)}</span>`).join("");
-  $("parsedView").innerHTML = `
-    <div class="kv"><b>题干</b>${escBr(p.problem_text)}</div>
-    <div class="kv"><b>知识点</b>${kps}</div>
-    <div class="kv"><b>学段</b>${esc(p.grade_band)}</div>
-    <div class="kv"><b>难度</b>${esc(p.difficulty)}　<b>题型</b>${esc(p.problem_type)}</div>
-  `;
-  typeset($("parsedView"));
-}
-
-// ---------- 第 2 步：改编条件 ----------
 $("count").addEventListener("input", (e) => {
   $("countLabel").textContent = e.target.value;
 });
 
-$("adaptBtn").addEventListener("click", async () => {
-  if (!state.parsed) { toast("请先解析原题"); return; }
-  const conditions = {
+function getConditions() {
+  return {
     difficulty_change: $("difficultyChange").value,
     target_type: $("targetType").value,
     scenario_theme: $("scenarioTheme").value.trim(),
@@ -181,14 +127,30 @@ $("adaptBtn").addEventListener("click", async () => {
     allow_extension: $("allowExtension").checked,
     grade_hint: "",
   };
-  const btn = $("adaptBtn");
-  setBusy(btn, true, "生成中…");
+}
+
+// ---------- 一键生成 ----------
+$("generateBtn").addEventListener("click", async () => {
+  const text = $("pasteText").value.trim();
+  if (!state.selectedFile && !text) {
+    toast("请上传文件或粘贴题目文本");
+    return;
+  }
+  const btn = $("generateBtn");
+  setBusy(btn, true, "生成中…（解析→改编→校验）");
   try {
-    const data = await postJSON("/api/adapt", {
-      parsed: state.parsed,
-      conditions,
-    });
-    state.lastResponse = data;
+    const form = new FormData();
+    if (state.selectedFile) form.append("file", state.selectedFile);
+    if (text) form.append("text", text);
+    form.append("conditions", JSON.stringify(getConditions()));
+
+    const res = await fetch("/api/generate", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `生成失败 (${res.status})`);
+
+    state.parsed = data.parsed;
+    state.lastResponse = { variants: data.variants };
+    renderParsedSummary(data.parsed);
     renderResults(data);
     show("step-results");
     $("step-results").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -199,7 +161,17 @@ $("adaptBtn").addEventListener("click", async () => {
   }
 });
 
-// ---------- 第 3 步：结果 ----------
+function renderParsedSummary(p) {
+  const kps = (p.knowledge_points || [])
+    .map((k) => `<span class="tag">${esc(k)}</span>`).join("");
+  $("parsedSummary").innerHTML = `
+    <div class="kv"><b>识别原题</b>${escBr(p.problem_text)}</div>
+    <div class="kv"><b>知识点</b>${kps}　<b>学段</b>${esc(p.grade_band)}　<b>难度</b>${esc(p.difficulty)}　<b>题型</b>${esc(p.problem_type)}</div>
+  `;
+  typeset($("parsedSummary"));
+}
+
+// ---------- 结果 ----------
 function renderResults(data) {
   const checksByIndex = {};
   (data.scope_checks || []).forEach((c) => { checksByIndex[c.index] = c; });
@@ -241,6 +213,7 @@ function renderResults(data) {
   );
 }
 
+// ---------- 导出 ----------
 $("exportWordBtn").addEventListener("click", async () => {
   if (!state.lastResponse) return;
   const btn = $("exportWordBtn");
