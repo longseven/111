@@ -131,6 +131,9 @@ button.link {
   color: var(--muted);
   gap: 5px;
 }
+.form-grid label.full {
+  grid-column: 1 / -1;
+}
 .form-grid label.checkbox {
   flex-direction: row;
   align-items: center;

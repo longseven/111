@@ -37,6 +37,13 @@ class AdaptConditions(BaseModel):
     scenario_theme: str = Field(
         default="", description="情境/背景主题（自由文本，可空），例如'购物''行程''体育'。"
     )
+    extra_instructions: str = Field(
+        default="",
+        description=(
+            "用户用自然语言口述的改编要求（自由文本，可空），"
+            "例如'改成关于篮球比赛的应用题，难度高一点，出3道'。在不超纲前提下尽量满足。"
+        ),
+    )
     change_mode: Literal["values", "scenario", "phrasing", "comprehensive"] = Field(
         default="values",
         description="改编方式：values=仅换数值，scenario=换情境，phrasing=换问法，comprehensive=综合。",

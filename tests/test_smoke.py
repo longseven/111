@@ -174,8 +174,14 @@ def test_parsed_problem_roundtrip():
 def test_adapt_conditions_defaults_and_bounds():
     c = AdaptConditions()
     assert c.count == 2 and c.allow_extension is False
+    assert c.extra_instructions == ""  # 自由描述默认空
     with pytest.raises(ValueError):
         AdaptConditions(count=9)
+
+
+def test_adapt_conditions_extra_instructions():
+    c = AdaptConditions(extra_instructions="改成篮球应用题，难一点")
+    assert "篮球" in c.model_dump_json()
 
 
 def test_adapt_result_roundtrip():

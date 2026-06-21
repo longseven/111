@@ -28,6 +28,7 @@ ADAPT_SYSTEM = """你是资深 K12 数学命题老师，负责把一道原题改
 - scenario_theme：若非空，把题目情境替换为该主题。
 - change_mode：values=仅改数值、scenario=改情境、phrasing=改问法、comprehensive=综合改编。
 - count：生成对应数量的新题。
+- extra_instructions：用户自然语言口述的额外要求，若非空则尽量满足；但当其与"不超纲"冲突时，仍以不超纲为先。
 
 每道新题必须给出：
 - stem：新题干（数值合理、可解、表述清晰）。

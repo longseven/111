@@ -40,6 +40,12 @@ def adapt_problem(parsed: ParsedProblem, conditions: AdaptConditions) -> AdaptRe
         + conditions.model_dump_json(indent=2)
         + f"\n\n请生成 {conditions.count} 道符合上述条件且不超纲的新题。"
     )
+    if conditions.extra_instructions.strip():
+        user_text += (
+            "\n请特别注意用户口述的额外要求："
+            + conditions.extra_instructions.strip()
+            + "（在不超纲前提下尽量满足）。"
+        )
     return structured_completion(ADAPT_SYSTEM, [text_part(user_text)], AdaptResult)
 
 

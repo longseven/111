@@ -126,6 +126,7 @@ $("adaptBtn").addEventListener("click", async () => {
     difficulty_change: $("difficultyChange").value,
     target_type: $("targetType").value,
     scenario_theme: $("scenarioTheme").value.trim(),
+    extra_instructions: $("extraInstructions").value.trim(),
     change_mode: $("changeMode").value,
     count: Number($("count").value),
     allow_extension: $("allowExtension").checked,
