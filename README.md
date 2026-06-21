@@ -89,6 +89,8 @@ OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt
 | `POST` | `/api/adapt` | JSON：`{parsed, conditions}` → 返回 `{variants}`（分步②） |
 | `POST` | `/api/verify` | JSON：`{parsed, variants}` → 返回 `{scope_checks}`（分步③，不超纲校验） |
 | `POST` | `/api/verify_answer` | JSON：`{variants}` → 返回 `{answer_checks}`（分步④，独立解题复核答案正确性） |
+| `POST` | `/api/split` | `multipart/form-data`：`file`/`text` → 返回 `{problems}`（整卷拆分为多道题） |
+| `POST` | `/api/export_paper` | JSON：`{groups, title, formula_mode}` → 返回 `.docx`（整卷组卷导出） |
 | `POST` | `/api/export` | JSON：`{parsed, variants, title}` → 返回 `.docx`（公式为 Word 原生 OMML，MathType 兼容） |
 
 支持的上传类型：图片（png/jpg/jpeg/webp/gif）、PDF、文本（txt/md），或直接粘贴文本。

@@ -193,9 +193,14 @@ $("generateBtn").addEventListener("click", async () => {
     toast("请上传题目图片或文件");
     return;
   }
+  if ($("paperMode").checked) {
+    await generatePaper();
+    return;
+  }
   const btn = $("generateBtn");
   btn.disabled = true;
   clearGenError();
+  $("paperStatus").classList.add("hidden");
   showProgress();
   let cur = 0;
   try {
@@ -251,6 +256,7 @@ $("generateBtn").addEventListener("click", async () => {
       );
     }
 
+    state.mode = "single";
     state.parsed = parsed;
     state.lastResponse = { variants: adaptRes.variants };
     renderParsedSummary(parsed);
@@ -270,6 +276,45 @@ $("generateBtn").addEventListener("click", async () => {
   }
 });
 
+// ---------- 整卷模式：拆分 → 逐题改编 → 组卷 ----------
+async function generatePaper() {
+  const btn = $("generateBtn");
+  btn.disabled = true;
+  clearGenError();
+  $("progress").classList.add("hidden");
+  const status = $("paperStatus");
+  status.classList.remove("hidden");
+  status.textContent = "正在拆分试卷…";
+  try {
+    const form = new FormData();
+    form.append("file", state.selectedFile);
+    const split = await postForm("/api/split", form);
+    const problems = split.problems || [];
+    if (!problems.length) throw new Error("未能从试卷中识别出题目");
+
+    const conditions = getConditions();
+    const groups = [];
+    for (let i = 0; i < problems.length; i++) {
+      status.textContent = `正在改编第 ${i + 1}/${problems.length} 题…`;
+      const f = new FormData();
+      f.append("text", problems[i]);
+      const parsed = await postForm("/api/parse", f);
+      const adaptRes = await postJSON("/api/adapt", { parsed, conditions });
+      groups.push({ parsed, variants: adaptRes.variants });
+    }
+    status.textContent = `完成：共 ${groups.length} 道题（整卷模式逐题改编，未做不超纲/答案校验）`;
+    state.mode = "paper";
+    state.paperGroups = groups;
+    renderPaper(groups);
+    show("step-results");
+    $("step-results").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    showGenError(`整卷改编失败：${err.message}\n（详细报错见运行 ./run.sh 的终端窗口）`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function renderParsedSummary(p) {
   const kps = (p.knowledge_points || [])
     .map((k) => `<span class="tag">${esc(k)}</span>`).join("");
@@ -281,78 +326,119 @@ function renderParsedSummary(p) {
 }
 
 // ---------- 结果 ----------
-function renderResults(data) {
-  const checksByIndex = {};
-  (data.scope_checks || []).forEach((c) => { checksByIndex[c.index] = c; });
-  const ansByIndex = {};
-  (data.answer_checks || []).forEach((c) => { ansByIndex[c.index] = c; });
+let copyRegistry = [];
 
-  const html = (data.variants || []).map((v, i) => {
-    const check = checksByIndex[i];
-    const passed = check ? check.passed : true;
-    let badge;
+function variantCardHtml(v, displayIndex, opts = {}) {
+  const { check, ans, showBadges = true } = opts;
+  const passed = check ? check.passed : true;
+  let badge = "";
+  if (showBadges) {
     if (!check) badge = '<span class="badge neutral">— 未校验</span>';
     else if (check.passed) badge = '<span class="badge ok">✓ 不超纲</span>';
     else badge = '<span class="badge bad">✗ 可能超纲</span>';
+  }
+  let ansBadge = "";
+  if (showBadges && ans) {
+    ansBadge = ans.correct
+      ? '<span class="badge ok">✓ 答案已复核</span>'
+      : '<span class="badge bad">✗ 答案存疑</span>';
+  }
+  const ansBlock = showBadges && ans && !ans.correct
+    ? `<div class="field reason" style="background:#fbeae8;border-left-color:var(--bad)"><div class="label">答案存疑</div>独立复核正确答案应为：${escBr(ans.correct_answer)}<br>${esc(ans.reason)}</div>`
+    : "";
+  const checkReason = showBadges && check
+    ? `<div class="field"><div class="label">校验说明</div>${esc(check.reason)}</div>`
+    : "";
+  const kps = (v.knowledge_points || [])
+    .map((k) => `<span class="tag">${esc(k)}</span>`).join("");
+  const flagged = showBadges && !(passed && (!ans || ans.correct));
+  const cid = copyRegistry.push(v) - 1;
+  return `
+    <div class="variant ${flagged ? "flagged" : ""}">
+      <h3>新题 ${displayIndex} ${badge} ${ansBadge}</h3>
+      <div class="field stem"><div class="label">题干</div>${escBr(v.stem)}</div>
+      <div class="field"><div class="label">参考答案</div>${escBr(v.answer)}</div>
+      ${ansBlock}
+      <div class="field"><div class="label">解析</div>${escBr(v.solution)}</div>
+      <div class="field"><div class="label">知识点</div>${kps}　难度：${esc(v.difficulty)}</div>
+      <div class="field reason"><div class="label">改编理由</div>${escBr(v.adaptation_reason)}</div>
+      <div class="field"><div class="label">不超纲自检</div>${esc(v.within_scope_note)}</div>
+      ${checkReason}
+      <button class="link" data-copy="${cid}">复制本题</button>
+    </div>`;
+}
 
-    const ans = ansByIndex[i];
-    let ansBadge = "";
-    if (ans) {
-      ansBadge = ans.correct
-        ? '<span class="badge ok">✓ 答案已复核</span>'
-        : '<span class="badge bad">✗ 答案存疑</span>';
-    }
-    const ansBlock = ans && !ans.correct
-      ? `<div class="field reason" style="background:#fbeae8;border-left-color:var(--bad)"><div class="label">答案存疑</div>独立复核正确答案应为：${escBr(ans.correct_answer)}<br>${esc(ans.reason)}</div>`
-      : "";
-
-    const checkReason = check
-      ? `<div class="field"><div class="label">校验说明</div>${esc(check.reason)}</div>`
-      : "";
-    const kps = (v.knowledge_points || [])
-      .map((k) => `<span class="tag">${esc(k)}</span>`).join("");
-    return `
-      <div class="variant ${passed && (!ans || ans.correct) ? "" : "flagged"}">
-        <h3>新题 ${i + 1} ${badge} ${ansBadge}</h3>
-        <div class="field stem"><div class="label">题干</div>${escBr(v.stem)}</div>
-        <div class="field"><div class="label">参考答案</div>${escBr(v.answer)}</div>
-        ${ansBlock}
-        <div class="field"><div class="label">解析</div>${escBr(v.solution)}</div>
-        <div class="field"><div class="label">知识点</div>${kps}　难度：${esc(v.difficulty)}</div>
-        <div class="field reason"><div class="label">改编理由</div>${escBr(v.adaptation_reason)}</div>
-        <div class="field"><div class="label">不超纲自检</div>${esc(v.within_scope_note)}</div>
-        ${checkReason}
-        <button class="link" data-copy="${i}">复制本题</button>
-      </div>`;
-  }).join("");
-
-  $("resultsView").innerHTML = html;
-  typeset($("resultsView"));
-
+function attachCopyHandlers() {
   document.querySelectorAll("[data-copy]").forEach((b) =>
     b.addEventListener("click", () => {
-      const v = data.variants[Number(b.dataset.copy)];
+      const v = copyRegistry[Number(b.dataset.copy)];
       const txt = `${v.stem}\n\n答案：${v.answer}\n解析：${v.solution}`;
       navigator.clipboard.writeText(txt).then(() => toast("已复制到剪贴板"));
     })
   );
 }
 
+function renderResults(data) {
+  copyRegistry = [];
+  const checksByIndex = {};
+  (data.scope_checks || []).forEach((c) => { checksByIndex[c.index] = c; });
+  const ansByIndex = {};
+  (data.answer_checks || []).forEach((c) => { ansByIndex[c.index] = c; });
+
+  const html = (data.variants || [])
+    .map((v, i) =>
+      variantCardHtml(v, i + 1, {
+        check: checksByIndex[i],
+        ans: ansByIndex[i],
+        showBadges: true,
+      })
+    )
+    .join("");
+  $("resultsView").innerHTML = html;
+  typeset($("resultsView"));
+  attachCopyHandlers();
+}
+
+function renderPaper(groups) {
+  copyRegistry = [];
+  $("parsedSummary").innerHTML = `<div class="kv"><b>整卷改编</b>共 ${groups.length} 道题（点「导出 Word」组卷下载）</div>`;
+  const html = groups
+    .map((g, gi) => {
+      const orig = g.parsed
+        ? `<div class="kv paper-orig"><b>原第 ${gi + 1} 题</b>${escBr(g.parsed.problem_text)}</div>`
+        : "";
+      const inner = (g.variants || [])
+        .map((v, vi) => variantCardHtml(v, vi + 1, { showBadges: false }))
+        .join("");
+      return `<div class="paper-group"><h2 class="paper-h">原第 ${gi + 1} 题改编</h2>${orig}${inner}</div>`;
+    })
+    .join("");
+  $("resultsView").innerHTML = html;
+  typeset($("resultsView"));
+  typeset($("parsedSummary"));
+  attachCopyHandlers();
+}
+
 // ---------- 导出 ----------
 $("exportWordBtn").addEventListener("click", async () => {
-  if (!state.lastResponse) return;
+  const paper = state.mode === "paper";
+  if (paper ? !state.paperGroups : !state.lastResponse) return;
   const btn = $("exportWordBtn");
   setBusy(btn, true, "导出中…");
   try {
-    const res = await fetch("/api/export", {
+    const url = paper ? "/api/export_paper" : "/api/export";
+    const body = paper
+      ? { groups: state.paperGroups, title: "改编试卷", formula_mode: $("formulaMode").value }
+      : {
+          parsed: state.parsed,
+          variants: state.lastResponse.variants,
+          title: "改编题目",
+          formula_mode: $("formulaMode").value,
+        };
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        parsed: state.parsed,
-        variants: state.lastResponse.variants,
-        title: "改编题目",
-        formula_mode: $("formulaMode").value,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       let msg = `导出失败 (${res.status})`;
@@ -360,12 +446,12 @@ $("exportWordBtn").addEventListener("click", async () => {
       throw new Error(msg);
     }
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    const dlUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = "改编题目.docx";
+    a.href = dlUrl;
+    a.download = paper ? "改编试卷.docx" : "改编题目.docx";
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(dlUrl);
     toast("已导出 Word");
   } catch (err) {
     toast(err.message);
@@ -375,8 +461,10 @@ $("exportWordBtn").addEventListener("click", async () => {
 });
 
 $("exportBtn").addEventListener("click", () => {
-  if (!state.lastResponse) return;
-  const blob = new Blob([JSON.stringify(state.lastResponse, null, 2)], {
+  const payload =
+    state.mode === "paper" ? { groups: state.paperGroups } : state.lastResponse;
+  if (!payload) return;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
   });
   const url = URL.createObjectURL(blob);

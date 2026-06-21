@@ -124,6 +124,24 @@ class AnswerVerifyRequest(BaseModel):
     variants: List[AdaptedVariant]
 
 
+# ---------- 整卷（多题） ----------
+class PaperSplit(BaseModel):
+    problems: List[str] = Field(
+        description="从整张试卷拆分出的各道题，每项为一道题的完整题干文本（含题号、所有小问与条件）。"
+    )
+
+
+class ExportPaperGroup(BaseModel):
+    parsed: Optional[ParsedProblem] = None
+    variants: List[AdaptedVariant]
+
+
+class ExportPaperRequest(BaseModel):
+    groups: List[ExportPaperGroup]
+    title: str = "改编试卷"
+    formula_mode: Literal["omml", "image"] = "omml"
+
+
 class ExportRequest(BaseModel):
     parsed: Optional[ParsedProblem] = None
     variants: List[AdaptedVariant]

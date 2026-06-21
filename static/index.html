@@ -28,6 +28,11 @@
       </div>
       <div id="filePreview" class="file-preview hidden"></div>
 
+      <label class="checkbox paper-toggle">
+        <input type="checkbox" id="paperMode" />
+        整卷模式（上传的是含多道题的试卷，逐题改编后可组卷导出）
+      </label>
+
       <h3 class="sub">改编要求</h3>
       <div class="form-grid">
         <label>难度调整
@@ -75,6 +80,7 @@
         <div class="pstep" data-step="2"><span class="pdot"></span>不超纲校验</div>
         <div class="pstep" data-step="3"><span class="pdot"></span>答案校验</div>
       </div>
+      <div id="paperStatus" class="paper-status hidden"></div>
       <div id="genError" class="gen-error hidden"></div>
       <button class="primary" id="generateBtn">生成新题</button>
     </section>

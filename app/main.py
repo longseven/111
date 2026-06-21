@@ -14,17 +14,19 @@ from .claude_service import (
     RefusalError,
     adapt_problem,
     parse_problem,
+    split_paper,
     verify_answer,
     verify_in_scope,
 )
 from .config import get_settings
 from .content import UnsupportedFileError, build_problem_parts
-from .export import export_docx
+from .export import export_docx, export_paper_docx
 from .schemas import (
     AdaptConditions,
     AdaptRequest,
     AdaptResult,
     AnswerVerifyRequest,
+    ExportPaperRequest,
     ExportRequest,
     VerifyRequest,
 )
@@ -142,6 +144,50 @@ async def api_verify_answer(payload: AnswerVerifyRequest) -> JSONResponse:
         return _server_error(f"答案校验失败：{exc}")
 
     return JSONResponse(content={"answer_checks": [c.model_dump() for c in checks.checks]})
+
+
+@app.post("/api/split")
+async def api_split(
+    file: Optional[UploadFile] = File(default=None),
+    text: Optional[str] = Form(default=None),
+) -> JSONResponse:
+    """整卷：把含多题的试卷拆成一道道独立题目。"""
+    settings = get_settings()
+    file_name: Optional[str] = None
+    file_bytes: Optional[bytes] = None
+    if file is not None:
+        data = await file.read()
+        if len(data) > settings.max_upload_bytes:
+            return _error(413, f"文件过大，上限为 {settings.max_upload_bytes // (1024 * 1024)}MB。")
+        file_name, file_bytes = file.filename or "upload", data
+
+    try:
+        parts = build_problem_parts(file_name, file_bytes, text)
+        result = split_paper(parts)
+    except (UnsupportedFileError, ValueError) as exc:
+        return _error(400, str(exc))
+    except ConfigError as exc:
+        return _error(500, str(exc))
+    except RefusalError as exc:
+        return _error(422, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return _server_error(f"拆分试卷失败：{exc}")
+
+    return JSONResponse(content={"problems": result.problems})
+
+
+@app.post("/api/export_paper")
+async def api_export_paper(payload: ExportPaperRequest):
+    try:
+        groups = [(g.parsed, g.variants) for g in payload.groups]
+        data = export_paper_docx(groups, payload.title, payload.formula_mode)
+    except Exception as exc:  # noqa: BLE001
+        return _server_error(f"导出失败：{exc}")
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": 'attachment; filename="adapted_paper.docx"'},
+    )
 
 
 @app.post("/api/generate")

@@ -11,11 +11,18 @@ from typing import Any, Dict, List
 
 from .content import text_part
 from .llm import ConfigError, RefusalError, structured_completion
-from .prompts import ADAPT_SYSTEM, ANSWER_VERIFY_SYSTEM, PARSE_SYSTEM, VERIFY_SYSTEM
+from .prompts import (
+    ADAPT_SYSTEM,
+    ANSWER_VERIFY_SYSTEM,
+    PARSE_SYSTEM,
+    SPLIT_SYSTEM,
+    VERIFY_SYSTEM,
+)
 from .schemas import (
     AdaptConditions,
     AdaptResult,
     AnswerCheckResult,
+    PaperSplit,
     ParsedProblem,
     ScopeCheckResult,
 )
@@ -27,6 +34,7 @@ __all__ = [
     "adapt_problem",
     "verify_in_scope",
     "verify_answer",
+    "split_paper",
     "format_choices",
 ]
 
@@ -47,6 +55,13 @@ def format_choices(text: str) -> str:
         return text
     out = re.sub(r"\s*(?<![A-Za-z0-9])([A-H][.．])", lambda m: "\n" + m.group(1), text)
     return out.lstrip("\n").rstrip()
+
+
+def split_paper(parts: List[Dict[str, Any]]) -> PaperSplit:
+    """整卷：把含多道题的试卷拆成一道道独立题目。"""
+    result = structured_completion(SPLIT_SYSTEM, parts, PaperSplit)
+    result.problems = [format_choices(t) for t in result.problems]
+    return result
 
 
 def parse_problem(parts: List[Dict[str, Any]]) -> ParsedProblem:

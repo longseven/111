@@ -303,6 +303,28 @@ def test_format_choices_leaves_geometry_points():
     assert format_choices(s) == s  # 无 A. 式句点标记，不误伤
 
 
+def test_export_paper_groups():
+    import io
+    import zipfile
+
+    from app.export import export_paper_docx
+
+    v = _sample_variants()[0]
+    groups = [(None, [v]), (None, [v, v])]
+    data = export_paper_docx(groups, "改编试卷", "image")
+    assert data[:2] == b"PK"
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        xml = z.read("word/document.xml").decode("utf-8")
+    assert xml.count("原第") >= 2  # 两个题组
+
+
+def test_paper_split_schema():
+    from app.schemas import PaperSplit
+
+    p = PaperSplit(problems=["第1题", "第2题"])
+    assert PaperSplit(**p.model_dump()).problems == ["第1题", "第2题"]
+
+
 def test_export_image_mode_line_breaks():
     import io
     import zipfile
