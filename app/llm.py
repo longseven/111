@@ -41,7 +41,9 @@ def _anthropic_structured(system: str, parts: List[Dict[str, Any]], output_forma
     import anthropic
 
     settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = anthropic.Anthropic(
+        api_key=settings.anthropic_api_key, timeout=settings.request_timeout
+    )
     content = to_anthropic_content(parts)
     response = client.messages.parse(
         model=settings.model,
@@ -65,7 +67,11 @@ def _openai_structured(system: str, parts: List[Dict[str, Any]], output_format: 
         raise ConfigError("未安装 openai 库，请先执行 pip install openai。") from exc
 
     settings = get_settings()
-    client = OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url or None)
+    client = OpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url or None,
+        timeout=settings.request_timeout,
+    )
 
     # 内容转换在 API 调用前完成；PDF 在此会抛 UnsupportedFileError（不被下方兜底吞掉）。
     content = to_openai_content(parts)

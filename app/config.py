@@ -52,6 +52,7 @@ class Settings:
         # 通用
         self.max_tokens: int = int(os.environ.get("MAX_TOKENS", "16000"))
         self.max_upload_bytes: int = int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+        self.request_timeout: float = float(os.environ.get("REQUEST_TIMEOUT", "300"))
 
     @property
     def model(self) -> str:
