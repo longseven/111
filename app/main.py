@@ -14,6 +14,7 @@ from .claude_service import (
     RefusalError,
     adapt_problem,
     parse_problem,
+    verify_answer,
     verify_in_scope,
 )
 from .config import get_settings
@@ -23,6 +24,7 @@ from .schemas import (
     AdaptConditions,
     AdaptRequest,
     AdaptResult,
+    AnswerVerifyRequest,
     ExportRequest,
     VerifyRequest,
 )
@@ -125,6 +127,21 @@ async def api_verify(payload: VerifyRequest) -> JSONResponse:
         return _server_error(f"校验失败：{exc}")
 
     return JSONResponse(content={"scope_checks": [c.model_dump() for c in checks.checks]})
+
+
+@app.post("/api/verify_answer")
+async def api_verify_answer(payload: AnswerVerifyRequest) -> JSONResponse:
+    """第 4 步：独立解题复核答案正确性。"""
+    try:
+        checks = verify_answer(AdaptResult(variants=payload.variants))
+    except ConfigError as exc:
+        return _error(500, str(exc))
+    except RefusalError as exc:
+        return _error(422, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return _server_error(f"答案校验失败：{exc}")
+
+    return JSONResponse(content={"answer_checks": [c.model_dump() for c in checks.checks]})
 
 
 @app.post("/api/generate")

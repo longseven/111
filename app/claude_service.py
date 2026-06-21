@@ -5,15 +5,17 @@ ConfigError / RefusalError 从 llm 重新导出，便于 main.py 统一捕获。
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List
 
 from .content import text_part
 from .llm import ConfigError, RefusalError, structured_completion
-from .prompts import ADAPT_SYSTEM, PARSE_SYSTEM, VERIFY_SYSTEM
+from .prompts import ADAPT_SYSTEM, ANSWER_VERIFY_SYSTEM, PARSE_SYSTEM, VERIFY_SYSTEM
 from .schemas import (
     AdaptConditions,
     AdaptResult,
+    AnswerCheckResult,
     ParsedProblem,
     ScopeCheckResult,
 )
@@ -24,6 +26,7 @@ __all__ = [
     "parse_problem",
     "adapt_problem",
     "verify_in_scope",
+    "verify_answer",
     "format_choices",
 ]
 
@@ -72,6 +75,21 @@ def adapt_problem(parsed: ParsedProblem, conditions: AdaptConditions) -> AdaptRe
     for v in result.variants:
         v.stem = format_choices(v.stem)
     return result
+
+
+def verify_answer(result: AdaptResult) -> AnswerCheckResult:
+    """独立解题复核：判断每道新题的答案是否正确（全新上下文，不依赖原解析）。"""
+    payload = [
+        {"index": i, "stem": v.stem, "given_answer": v.answer}
+        for i, v in enumerate(result.variants)
+    ]
+    user_text = (
+        "请独立解下列每道题，并判断各自的 given_answer 是否正确：\n"
+        + json.dumps(payload, ensure_ascii=False, indent=2)
+    )
+    return structured_completion(
+        ANSWER_VERIFY_SYSTEM, [text_part(user_text)], AnswerCheckResult
+    )
 
 
 def verify_in_scope(parsed: ParsedProblem, result: AdaptResult) -> ScopeCheckResult:

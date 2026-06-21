@@ -106,6 +106,24 @@ class VerifyRequest(BaseModel):
     variants: List[AdaptedVariant]
 
 
+# ---------- 答案正确性校验 ----------
+class AnswerCheck(BaseModel):
+    """对单道新题答案的独立复核结果。"""
+
+    index: int = Field(description="对应改编题序号，从 0 开始。")
+    correct: bool = Field(description="给定答案 given_answer 是否正确。")
+    correct_answer: str = Field(description="独立解题得到的正确答案（用 LaTeX，$...$ 包裹公式）。")
+    reason: str = Field(description="判断依据/解题要点；若不正确，指出错在哪。")
+
+
+class AnswerCheckResult(BaseModel):
+    checks: List[AnswerCheck] = Field(description="逐题的答案复核结果。")
+
+
+class AnswerVerifyRequest(BaseModel):
+    variants: List[AdaptedVariant]
+
+
 class ExportRequest(BaseModel):
     parsed: Optional[ParsedProblem] = None
     variants: List[AdaptedVariant]

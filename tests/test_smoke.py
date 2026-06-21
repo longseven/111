@@ -203,6 +203,16 @@ def test_scope_check_result():
     assert r.checks[0].passed is True
 
 
+def test_answer_check_result_roundtrip():
+    from app.schemas import AnswerCheck, AnswerCheckResult
+
+    r = AnswerCheckResult(
+        checks=[AnswerCheck(index=0, correct=False, correct_answer="$\\frac{1}{2}$", reason="原答案算错了一步。")]
+    )
+    back = AnswerCheckResult(**r.model_dump())
+    assert back.checks[0].correct is False and "frac" in back.checks[0].correct_answer
+
+
 # ---------- Word 导出 ----------
 def _sample_variants():
     return [

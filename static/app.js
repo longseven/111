@@ -160,7 +160,7 @@ function hideProgress() {
   $("progress").classList.add("hidden");
 }
 
-const STEP_NAMES = ["识别原题", "改编生成", "不超纲校验"];
+const STEP_NAMES = ["识别原题", "改编生成", "不超纲校验", "答案校验"];
 function showGenError(msg) {
   const el = $("genError");
   el.textContent = msg;
@@ -234,10 +234,31 @@ $("generateBtn").addEventListener("click", async () => {
       );
     }
 
+    // ④ 答案校验（独立解题复核，失败也不丢结果）
+    cur = 3;
+    setStep(3, "active");
+    let answerChecks = [];
+    try {
+      const ansRes = await postJSON("/api/verify_answer", {
+        variants: adaptRes.variants,
+      });
+      answerChecks = ansRes.answer_checks;
+      setStep(3, "done");
+    } catch (aerr) {
+      setStep(3, "error");
+      showGenError(
+        `答案校验未完成：${aerr.message}\n（改编结果已照常显示，仅暂缺"答案复核"徽章，可稍后重试）`
+      );
+    }
+
     state.parsed = parsed;
     state.lastResponse = { variants: adaptRes.variants };
     renderParsedSummary(parsed);
-    renderResults({ variants: adaptRes.variants, scope_checks: scopeChecks });
+    renderResults({
+      variants: adaptRes.variants,
+      scope_checks: scopeChecks,
+      answer_checks: answerChecks,
+    });
     show("step-results");
     setTimeout(hideProgress, 700);
     $("step-results").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -263,6 +284,8 @@ function renderParsedSummary(p) {
 function renderResults(data) {
   const checksByIndex = {};
   (data.scope_checks || []).forEach((c) => { checksByIndex[c.index] = c; });
+  const ansByIndex = {};
+  (data.answer_checks || []).forEach((c) => { ansByIndex[c.index] = c; });
 
   const html = (data.variants || []).map((v, i) => {
     const check = checksByIndex[i];
@@ -271,16 +294,29 @@ function renderResults(data) {
     if (!check) badge = '<span class="badge neutral">— 未校验</span>';
     else if (check.passed) badge = '<span class="badge ok">✓ 不超纲</span>';
     else badge = '<span class="badge bad">✗ 可能超纲</span>';
+
+    const ans = ansByIndex[i];
+    let ansBadge = "";
+    if (ans) {
+      ansBadge = ans.correct
+        ? '<span class="badge ok">✓ 答案已复核</span>'
+        : '<span class="badge bad">✗ 答案存疑</span>';
+    }
+    const ansBlock = ans && !ans.correct
+      ? `<div class="field reason" style="background:#fbeae8;border-left-color:var(--bad)"><div class="label">答案存疑</div>独立复核正确答案应为：${escBr(ans.correct_answer)}<br>${esc(ans.reason)}</div>`
+      : "";
+
     const checkReason = check
       ? `<div class="field"><div class="label">校验说明</div>${esc(check.reason)}</div>`
       : "";
     const kps = (v.knowledge_points || [])
       .map((k) => `<span class="tag">${esc(k)}</span>`).join("");
     return `
-      <div class="variant ${passed ? "" : "flagged"}">
-        <h3>新题 ${i + 1} ${badge}</h3>
+      <div class="variant ${passed && (!ans || ans.correct) ? "" : "flagged"}">
+        <h3>新题 ${i + 1} ${badge} ${ansBadge}</h3>
         <div class="field stem"><div class="label">题干</div>${escBr(v.stem)}</div>
         <div class="field"><div class="label">参考答案</div>${escBr(v.answer)}</div>
+        ${ansBlock}
         <div class="field"><div class="label">解析</div>${escBr(v.solution)}</div>
         <div class="field"><div class="label">知识点</div>${kps}　难度：${esc(v.difficulty)}</div>
         <div class="field reason"><div class="label">改编理由</div>${escBr(v.adaptation_reason)}</div>
