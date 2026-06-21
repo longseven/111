@@ -187,6 +187,23 @@ async function postJSON(url, body) {
   return data;
 }
 
+// 并发限流执行：保持结果顺序，limit 个槽位轮转，单项异常由 fn 自行兜底
+async function runLimited(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  const workers = [];
+  for (let k = 0; k < Math.min(limit, items.length); k++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
+}
+
 // ---------- 一键生成（分三步显示进度） ----------
 $("generateBtn").addEventListener("click", async () => {
   if (!state.selectedFile) {
@@ -221,39 +238,22 @@ $("generateBtn").addEventListener("click", async () => {
     });
     setStep(1, "done");
 
-    // ③ 不超纲校验（失败也不丢弃已生成的改编结果）
-    cur = 2;
+    // ③④ 不超纲校验 + 答案校验：互不依赖，并行执行以提速
     setStep(2, "active");
-    let scopeChecks = [];
-    try {
-      const verifyRes = await postJSON("/api/verify", {
-        parsed,
-        variants: adaptRes.variants,
-      });
-      scopeChecks = verifyRes.scope_checks;
-      setStep(2, "done");
-    } catch (verr) {
-      setStep(2, "error");
-      showGenError(
-        `不超纲校验未完成：${verr.message}\n（改编结果已照常显示，仅暂缺"不超纲"徽章，可稍后重试）`
-      );
-    }
-
-    // ④ 答案校验（独立解题复核，失败也不丢结果）
-    cur = 3;
     setStep(3, "active");
+    let scopeChecks = [];
     let answerChecks = [];
-    try {
-      const ansRes = await postJSON("/api/verify_answer", {
-        variants: adaptRes.variants,
-      });
-      answerChecks = ansRes.answer_checks;
-      setStep(3, "done");
-    } catch (aerr) {
-      setStep(3, "error");
-      showGenError(
-        `答案校验未完成：${aerr.message}\n（改编结果已照常显示，仅暂缺"答案复核"徽章，可稍后重试）`
-      );
+    const vErrs = [];
+    await Promise.all([
+      postJSON("/api/verify", { parsed, variants: adaptRes.variants })
+        .then((r) => { scopeChecks = r.scope_checks; setStep(2, "done"); })
+        .catch((e) => { setStep(2, "error"); vErrs.push("不超纲校验：" + e.message); }),
+      postJSON("/api/verify_answer", { variants: adaptRes.variants })
+        .then((r) => { answerChecks = r.answer_checks; setStep(3, "done"); })
+        .catch((e) => { setStep(3, "error"); vErrs.push("答案校验：" + e.message); }),
+    ]);
+    if (vErrs.length) {
+      showGenError(vErrs.join("\n") + "\n（改编结果已照常显示，仅缺对应徽章，可稍后重试）");
     }
 
     state.mode = "single";
@@ -293,16 +293,32 @@ async function generatePaper() {
     if (!problems.length) throw new Error("未能从试卷中识别出题目");
 
     const conditions = getConditions();
-    const groups = [];
-    for (let i = 0; i < problems.length; i++) {
-      status.textContent = `正在改编第 ${i + 1}/${problems.length} 题…`;
-      const f = new FormData();
-      f.append("text", problems[i]);
-      const parsed = await postForm("/api/parse", f);
-      const adaptRes = await postJSON("/api/adapt", { parsed, conditions });
-      groups.push({ parsed, variants: adaptRes.variants });
-    }
-    status.textContent = `完成：共 ${groups.length} 道题（整卷模式逐题改编，未做不超纲/答案校验）`;
+    // 多题并发改编：限并发避免压垮代理；单题失败不影响整卷，记为 failed 占位
+    const PAPER_CONCURRENCY = 3;
+    let done = 0;
+    let failed = 0;
+    status.textContent = `正在改编 0/${problems.length} 题…（并发处理中）`;
+    const results = await runLimited(problems, PAPER_CONCURRENCY, async (text) => {
+      try {
+        const f = new FormData();
+        f.append("text", text);
+        const parsed = await postForm("/api/parse", f);
+        const adaptRes = await postJSON("/api/adapt", { parsed, conditions });
+        return { parsed, variants: adaptRes.variants };
+      } catch (e) {
+        failed++;
+        return { parsed: { problem_text: text }, variants: [], error: e.message };
+      } finally {
+        done++;
+        status.textContent = `正在改编 ${done}/${problems.length} 题…（并发处理中）`;
+      }
+    });
+    const groups = results;
+    const okCount = groups.length - failed;
+    status.textContent =
+      `完成：共 ${groups.length} 道题，成功 ${okCount} 题` +
+      (failed ? `，失败 ${failed} 题（已保留原题占位，可单独重试）` : "") +
+      "（整卷模式未做不超纲/答案校验）";
     state.mode = "paper";
     state.paperGroups = groups;
     renderPaper(groups);
@@ -407,9 +423,11 @@ function renderPaper(groups) {
       const orig = g.parsed
         ? `<div class="kv paper-orig"><b>原第 ${gi + 1} 题</b>${escBr(g.parsed.problem_text)}</div>`
         : "";
-      const inner = (g.variants || [])
-        .map((v, vi) => variantCardHtml(v, vi + 1, { showBadges: false }))
-        .join("");
+      const inner = g.error
+        ? `<div class="gen-error">本题改编失败：${esc(g.error)}（可单独重试）</div>`
+        : (g.variants || [])
+            .map((v, vi) => variantCardHtml(v, vi + 1, { showBadges: false }))
+            .join("");
       return `<div class="paper-group"><h2 class="paper-h">原第 ${gi + 1} 题改编</h2>${orig}${inner}</div>`;
     })
     .join("");

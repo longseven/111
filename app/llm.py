@@ -48,7 +48,8 @@ def _anthropic_structured(system: str, parts: List[Dict[str, Any]], output_forma
     response = client.messages.parse(
         model=settings.model,
         max_tokens=settings.max_tokens,
-        system=system,
+        # 系统提示加缓存断点：多变体/多题重复调用时省时省钱
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": content}],
         output_format=output_format,
     )
