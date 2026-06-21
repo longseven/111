@@ -18,7 +18,15 @@ from .claude_service import (
     verify_answer,
     verify_in_scope,
 )
-from .config import get_settings
+from .config import (
+    AUTH_COOKIE,
+    auth_enabled,
+    auth_password,
+    get_settings,
+    make_auth_token,
+    update_runtime,
+    valid_token,
+)
 from .content import UnsupportedFileError, build_problem_parts
 from .export import export_docx, export_paper_docx
 from . import store
@@ -28,8 +36,10 @@ from .schemas import (
     AdaptResult,
     AnswerVerifyRequest,
     BankSaveRequest,
+    ConfigUpdate,
     ExportPaperRequest,
     ExportRequest,
+    LoginRequest,
     VerifyRequest,
 )
 
@@ -40,16 +50,31 @@ app = FastAPI(title="K12 数学题目改编系统")
 store.init_db()
 
 
+def _error(status: int, message: str) -> JSONResponse:
+    return JSONResponse(status_code=status, content={"error": message})
+
+
+# 无需登录即可访问的接口（页面与静态资源在中间件里单独放行）
+_AUTH_FREE = {"/api/health", "/api/login"}
+
+
+@app.middleware("http")
+async def auth_gate(request, call_next):
+    """可选访问口令：设置 APP_PASSWORD 后，未登录则拦截 /api/*（页面照常加载以便登录）。"""
+    if auth_enabled():
+        path = request.url.path
+        if path.startswith("/api/") and path not in _AUTH_FREE:
+            if not valid_token(request.cookies.get(AUTH_COOKIE)):
+                return _error(401, "需要登录：请在页面右上角输入访问口令。")
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def add_no_cache_headers(request, call_next):
     """禁用缓存：更新代码后普通刷新即可拿到最新前端，无需强制刷新。"""
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
-
-
-def _error(status: int, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status, content={"error": message})
 
 
 def _server_error(message: str) -> JSONResponse:
@@ -71,7 +96,56 @@ def health() -> dict:
         "provider": settings.provider,
         "has_api_key": settings.has_api_key,
         "model": settings.model,
+        "auth_enabled": auth_enabled(),
     }
+
+
+def _config_view() -> dict:
+    s = get_settings()
+    return {
+        "provider": s.provider,
+        "anthropic_model": s.anthropic_model,
+        "openai_model": s.openai_model,
+        "openai_base_url": s.openai_base_url,
+        "has_anthropic_key": bool(s.anthropic_api_key.strip()),
+        "has_openai_key": bool(s.openai_api_key.strip()),
+        "has_api_key": s.has_api_key,
+        "model": s.model,
+        "auth_enabled": auth_enabled(),
+    }
+
+
+@app.get("/api/config")
+async def api_config_get() -> JSONResponse:
+    return JSONResponse(content=_config_view())
+
+
+@app.post("/api/config")
+async def api_config_set(payload: ConfigUpdate) -> JSONResponse:
+    """在线更新 provider/模型/key（不回显明文 key），即时生效无需重启。"""
+    try:
+        updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+        update_runtime(updates)
+    except Exception as exc:  # noqa: BLE001
+        return _server_error(f"保存设置失败：{exc}")
+    return JSONResponse(content=_config_view())
+
+
+@app.post("/api/login")
+async def api_login(payload: LoginRequest) -> JSONResponse:
+    if not auth_enabled():
+        return JSONResponse(content={"ok": True, "auth_enabled": False})
+    if payload.password.strip() != auth_password():
+        return _error(401, "口令不正确。")
+    resp = JSONResponse(content={"ok": True})
+    resp.set_cookie(
+        AUTH_COOKIE,
+        make_auth_token(auth_password()),
+        httponly=True,
+        samesite="lax",
+        max_age=7 * 24 * 3600,
+    )
+    return resp
 
 
 @app.post("/api/parse")

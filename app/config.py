@@ -6,9 +6,58 @@
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
+
+# 可在页面「设置」里在线覆盖的配置项（运行时覆盖文件优先于环境变量）
+RUNTIME_KEYS = (
+    "LLM_PROVIDER",
+    "ANTHROPIC_API_KEY",
+    "ADAPT_MODEL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_MODEL",
+)
+
+
+def _runtime_path() -> Path:
+    override = os.environ.get("CONFIG_PATH", "").strip()
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parent.parent / "data" / "runtime.json"
+
+
+def _load_runtime() -> dict:
+    """读取在线设置写入的运行时覆盖（JSON），损坏/缺失时返回空。"""
+    path = _runtime_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def update_runtime(updates: dict) -> None:
+    """合并并落盘运行时覆盖；仅接受白名单键，空字符串表示「清除该项、回退环境变量」。"""
+    path = _runtime_path()
+    current = _load_runtime()
+    for key, value in updates.items():
+        if key not in RUNTIME_KEYS:
+            continue
+        text = "" if value is None else str(value)
+        if text.strip() == "":
+            current.pop(key, None)
+        else:
+            current[key] = text
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+    get_settings.cache_clear()
 
 
 def _load_dotenv(env_path: Path | None = None) -> None:
@@ -37,17 +86,25 @@ _load_dotenv()
 
 class Settings:
     def __init__(self) -> None:
+        rt = _load_runtime()
+
+        def val(key: str, default: str = "") -> str:
+            # 在线设置（运行时覆盖）优先，其次环境变量/.env，最后默认值
+            if key in rt and str(rt[key]).strip() != "":
+                return str(rt[key])
+            return os.environ.get(key, default)
+
         # 选择 provider：anthropic（默认）/ openai
-        self.provider: str = os.environ.get("LLM_PROVIDER", "anthropic").strip().lower()
+        self.provider: str = val("LLM_PROVIDER", "anthropic").strip().lower()
 
         # Anthropic 官方
-        self.anthropic_api_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
-        self.anthropic_model: str = os.environ.get("ADAPT_MODEL", "claude-opus-4-8")
+        self.anthropic_api_key: str = val("ANTHROPIC_API_KEY", "")
+        self.anthropic_model: str = val("ADAPT_MODEL", "claude-opus-4-8")
 
         # OpenAI 兼容代理
-        self.openai_api_key: str = os.environ.get("OPENAI_API_KEY", "")
-        self.openai_base_url: str = os.environ.get("OPENAI_BASE_URL", "").strip()
-        self.openai_model: str = os.environ.get("OPENAI_MODEL", "claude-opus-4-8")
+        self.openai_api_key: str = val("OPENAI_API_KEY", "")
+        self.openai_base_url: str = val("OPENAI_BASE_URL", "").strip()
+        self.openai_model: str = val("OPENAI_MODEL", "claude-opus-4-8")
 
         # 通用
         self.max_tokens: int = int(os.environ.get("MAX_TOKENS", "16000"))
@@ -68,3 +125,29 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+# ---------- 可选访问口令（轻量多用户/团队内网访问控制） ----------
+AUTH_COOKIE = "k12_auth"
+
+
+def auth_password() -> str:
+    return os.environ.get("APP_PASSWORD", "").strip()
+
+
+def auth_enabled() -> bool:
+    return bool(auth_password())
+
+
+def make_auth_token(password: str) -> str:
+    """由口令派生不可逆登录令牌，写进 Cookie；改口令即令旧 Cookie 失效。"""
+    secret = os.environ.get("APP_SECRET", "k12-adapt-secret")
+    return hmac.new(secret.encode("utf-8"), password.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def valid_token(token: str | None) -> bool:
+    if not auth_enabled():
+        return True
+    if not token:
+        return False
+    return hmac.compare_digest(token, make_auth_token(auth_password()))

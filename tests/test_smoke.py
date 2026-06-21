@@ -376,6 +376,51 @@ def test_bank_save_request_schema():
     assert r.kind == "paper" and BankSaveRequest(**r.model_dump()).title == "t"
 
 
+# ---------- 在线设置（运行时覆盖） ----------
+def test_runtime_override_beats_env(tmp_path, monkeypatch):
+    from app import config
+
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "runtime.json"))
+    monkeypatch.setenv("OPENAI_MODEL", "env-model")
+    config.get_settings.cache_clear()
+    assert config.get_settings().openai_model == "env-model"
+
+    config.update_runtime({"OPENAI_MODEL": "ui-model", "LLM_PROVIDER": "openai"})
+    s = config.get_settings()
+    assert s.openai_model == "ui-model" and s.model == "ui-model"
+
+    # 空字符串=清除该项，回退环境变量
+    config.update_runtime({"OPENAI_MODEL": ""})
+    assert config.get_settings().openai_model == "env-model"
+    config.get_settings.cache_clear()
+
+
+def test_runtime_ignores_unknown_keys(tmp_path, monkeypatch):
+    from app import config
+
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "runtime.json"))
+    config.update_runtime({"EVIL_KEY": "x", "OPENAI_MODEL": "m"})
+    saved = config._load_runtime()
+    assert "EVIL_KEY" not in saved and saved["OPENAI_MODEL"] == "m"
+    config.get_settings.cache_clear()
+
+
+# ---------- 访问口令 ----------
+def test_auth_token_and_validation(monkeypatch):
+    from app import config
+
+    monkeypatch.delenv("APP_PASSWORD", raising=False)
+    assert config.auth_enabled() is False
+    assert config.valid_token(None) is True  # 未开启则一律放行
+
+    monkeypatch.setenv("APP_PASSWORD", "secret123")
+    assert config.auth_enabled() is True
+    tok = config.make_auth_token("secret123")
+    assert config.valid_token(tok) is True
+    assert config.valid_token("bad") is False
+    assert config.valid_token(None) is False
+
+
 # ---------- .env 加载 ----------
 def test_load_dotenv(tmp_path):
     import os

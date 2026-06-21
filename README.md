@@ -47,6 +47,16 @@ export ANTHROPIC_API_KEY=sk-ant-...      # 默认 provider 必填
 uvicorn app.main:app --reload
 ```
 
+### Docker（一键起服务）
+
+```bash
+docker compose up -d        # 然后浏览器打开 http://127.0.0.1:8000
+```
+
+配置可走两条路：① 提供 `.env`（见 `.env.example`）；② 启动后在页面右上角 **「⚙ 设置」** 里
+在线填 provider / 模型 / key，即时生效、无需重启。题库与在线设置持久化在挂载卷 `./data`，
+重建容器不丢。设 `APP_PASSWORD` 即开启访问口令（页面需登录）。
+
 ## 切换 provider（Anthropic 官方 / OpenAI 兼容代理）
 
 用环境变量 `LLM_PROVIDER` 切换，完整示例见 `.env.example`。
@@ -96,6 +106,9 @@ OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt
 | `GET` | `/api/bank/list` | 列出题库记录（id/标题/类型/题数/时间，倒序） |
 | `GET` | `/api/bank/{id}` | 读取单条记录全文（含 payload），用于「调回」结果区 |
 | `DELETE` | `/api/bank/{id}` | 删除单条题库记录 |
+| `GET` | `/api/config` | 当前 provider/模型/base_url + 是否已配置 key（key 不回显） |
+| `POST` | `/api/config` | 在线更新 provider/模型/key（写运行时覆盖文件，即时生效） |
+| `POST` | `/api/login` | 设置了 `APP_PASSWORD` 时用口令换登录 Cookie |
 
 支持的上传类型：图片（png/jpg/jpeg/webp/gif）、PDF、文本（txt/md），或直接粘贴文本。
 
@@ -143,6 +156,9 @@ app/
   prompts.py        解析 / 改编 / 校验 三段 system prompt
   llm.py            provider 抽象：Anthropic 官方 / OpenAI 兼容代理
   claude_service.py 三个环节封装（provider 无关）
+  export.py         Word 导出（OMML 可编辑公式 / matplotlib 图片公式）
+  store.py          题库本地存储（标准库 sqlite3）
 static/             原生 HTML/CSS/JS 单页前端
 tests/              离线单测
+Dockerfile / docker-compose.yml   容器化一键部署
 ```

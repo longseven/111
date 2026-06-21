@@ -152,6 +152,22 @@ class ExportRequest(BaseModel):
     )
 
 
+# ---------- 在线设置 / 登录 ----------
+class ConfigUpdate(BaseModel):
+    """在线修改 provider / 模型 / key（写入运行时覆盖文件，空字符串=清除回退环境变量）。"""
+
+    LLM_PROVIDER: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    ADAPT_MODEL: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_BASE_URL: Optional[str] = None
+    OPENAI_MODEL: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    password: str
+
+
 # ---------- 题库（本地保存/调回） ----------
 class BankSaveRequest(BaseModel):
     title: str = Field(default="未命名", description="本条记录的标题。")

@@ -172,6 +172,7 @@ function clearGenError() {
 
 async function postForm(url, form) {
   const res = await fetch(url, { method: "POST", body: form });
+  if (res.status === 401) showLogin();
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
   return data;
@@ -182,6 +183,7 @@ async function postJSON(url, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (res.status === 401) showLogin();
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
   return data;
@@ -687,4 +689,122 @@ async function deleteBankRecord(id) {
 
 $("saveBankBtn").addEventListener("click", saveToBank);
 $("refreshBankBtn").addEventListener("click", loadBankList);
+
+// ---------- 登录 ----------
+function showLogin() {
+  $("loginModal").classList.remove("hidden");
+}
+$("loginBtn").addEventListener("click", async () => {
+  const pwd = $("loginPwd").value;
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pwd }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "登录失败");
+    $("loginModal").classList.add("hidden");
+    $("loginError").classList.add("hidden");
+    toast("登录成功");
+    refreshConfigBadge();
+    loadBankList();
+  } catch (err) {
+    $("loginError").textContent = err.message;
+    $("loginError").classList.remove("hidden");
+  }
+});
+
+// ---------- 在线设置 ----------
+function setKeyState(id, ok) {
+  const el = $(id);
+  el.textContent = ok ? "（已配置）" : "（未配置）";
+  el.className = "key-state " + (ok ? "ok" : "bad");
+}
+function toggleCfgProvider() {
+  const p = $("cfgProvider").value;
+  $("cfgOpenai").classList.toggle("hidden", p !== "openai");
+  $("cfgAnthropic").classList.toggle("hidden", p !== "anthropic");
+}
+async function refreshConfigBadge() {
+  try {
+    const res = await fetch("/api/config");
+    if (res.status === 401) {
+      showLogin();
+      return;
+    }
+    const c = await res.json();
+    state.config = c;
+    $("modelBadge").textContent =
+      `${c.provider} · ${c.model}` + (c.has_api_key ? "" : " · ⚠未配置key");
+  } catch (e) {
+    /* 忽略 */
+  }
+}
+async function openSettings() {
+  try {
+    const res = await fetch("/api/config");
+    if (res.status === 401) {
+      showLogin();
+      return;
+    }
+    const c = await res.json();
+    $("cfgProvider").value = c.provider === "anthropic" ? "anthropic" : "openai";
+    $("cfgOpenaiBase").value = c.openai_base_url || "";
+    $("cfgOpenaiModel").value = c.openai_model || "";
+    $("cfgAnthropicModel").value = c.anthropic_model || "";
+    $("cfgOpenaiKey").value = "";
+    $("cfgAnthropicKey").value = "";
+    setKeyState("cfgOpenaiKeyState", c.has_openai_key);
+    setKeyState("cfgAnthropicKeyState", c.has_anthropic_key);
+    toggleCfgProvider();
+    $("settingsModal").classList.remove("hidden");
+  } catch (e) {
+    toast("读取设置失败");
+  }
+}
+async function saveSettings() {
+  const provider = $("cfgProvider").value;
+  const body = {
+    LLM_PROVIDER: provider,
+    OPENAI_BASE_URL: $("cfgOpenaiBase").value,
+    OPENAI_MODEL: $("cfgOpenaiModel").value,
+    ADAPT_MODEL: $("cfgAnthropicModel").value,
+  };
+  const ok = $("cfgOpenaiKey").value;
+  const ak = $("cfgAnthropicKey").value;
+  if (ok.trim()) body.OPENAI_API_KEY = ok;
+  if (ak.trim()) body.ANTHROPIC_API_KEY = ak;
+  try {
+    const res = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401) {
+      showLogin();
+      return;
+    }
+    const c = await res.json();
+    if (!res.ok) throw new Error(c.error || "保存失败");
+    state.config = c;
+    setKeyState("cfgOpenaiKeyState", c.has_openai_key);
+    setKeyState("cfgAnthropicKeyState", c.has_anthropic_key);
+    $("cfgOpenaiKey").value = "";
+    $("cfgAnthropicKey").value = "";
+    $("modelBadge").textContent =
+      `${c.provider} · ${c.model}` + (c.has_api_key ? "" : " · ⚠未配置key");
+    toast("设置已保存，即时生效");
+    $("settingsModal").classList.add("hidden");
+  } catch (err) {
+    toast(err.message || "保存失败");
+  }
+}
+$("settingsBtn").addEventListener("click", openSettings);
+$("cfgCloseBtn").addEventListener("click", () => $("settingsModal").classList.add("hidden"));
+$("cfgProvider").addEventListener("change", toggleCfgProvider);
+$("cfgSaveBtn").addEventListener("click", saveSettings);
+
+// ---------- 启动 ----------
+refreshConfigBadge();
 loadBankList();

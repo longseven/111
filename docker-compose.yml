@@ -1,0 +1,18 @@
+# 一键起服务：docker compose up -d  →  http://127.0.0.1:8000
+# 配置可走两条路：① .env 文件（见 .env.example）；② 启动后在页面「⚙ 设置」里在线填。
+services:
+  app:
+    build: .
+    image: k12-adapt:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # 可选：设置访问口令后，页面需登录才能调用接口
+      - APP_PASSWORD=${APP_PASSWORD:-}
+      - APP_SECRET=${APP_SECRET:-}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

@@ -14,7 +14,51 @@
   <header>
     <h1>K12 数学题目改编系统</h1>
     <p class="subtitle">上传题目并填写改编要求 → 一键生成新题（不超纲、附改编理由、可导出 Word）</p>
+    <div class="topbar">
+      <span id="modelBadge" class="model-badge"></span>
+      <button type="button" class="link" id="settingsBtn">⚙ 设置</button>
+    </div>
   </header>
+
+  <!-- 设置弹窗：在线切换 provider / 模型 / key -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-card">
+      <h2>模型设置</h2>
+      <p class="hint">在线修改即时生效，无需重启。key 不回显；留空表示不修改（清空请输入一个空格再保存即回退环境变量）。</p>
+      <label class="edit-field"><span>Provider</span>
+        <select id="cfgProvider">
+          <option value="openai">openai（OpenAI 兼容代理，如 codexzh）</option>
+          <option value="anthropic">anthropic（官方，支持 PDF）</option>
+        </select>
+      </label>
+      <div id="cfgOpenai">
+        <label class="edit-field"><span>OPENAI_BASE_URL</span><input type="text" id="cfgOpenaiBase" placeholder="https://api.codexzh.com/v1" /></label>
+        <label class="edit-field"><span>OPENAI_MODEL</span><input type="text" id="cfgOpenaiModel" placeholder="claude-opus-4-8" /></label>
+        <label class="edit-field"><span>OPENAI_API_KEY <span id="cfgOpenaiKeyState" class="key-state"></span></span><input type="password" id="cfgOpenaiKey" placeholder="留空不修改" /></label>
+      </div>
+      <div id="cfgAnthropic">
+        <label class="edit-field"><span>ADAPT_MODEL</span><input type="text" id="cfgAnthropicModel" placeholder="claude-opus-4-8" /></label>
+        <label class="edit-field"><span>ANTHROPIC_API_KEY <span id="cfgAnthropicKeyState" class="key-state"></span></span><input type="password" id="cfgAnthropicKey" placeholder="留空不修改" /></label>
+      </div>
+      <div class="edit-actions">
+        <button class="primary" id="cfgSaveBtn">保存</button>
+        <button class="link" id="cfgCloseBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 登录弹窗：设置了 APP_PASSWORD 时出现 -->
+  <div id="loginModal" class="modal hidden">
+    <div class="modal-card">
+      <h2>访问验证</h2>
+      <p class="hint">本系统已开启访问口令，请输入口令后继续。</p>
+      <label class="edit-field"><span>访问口令</span><input type="password" id="loginPwd" /></label>
+      <div id="loginError" class="gen-error hidden"></div>
+      <div class="edit-actions">
+        <button class="primary" id="loginBtn">登录</button>
+      </div>
+    </div>
+  </div>
 
   <main>
     <!-- 一步：上传 + 改编要求 -->
