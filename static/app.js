@@ -187,6 +187,21 @@ async function postJSON(url, body) {
   return data;
 }
 
+// 仅对网络层瞬断（Failed to fetch / 服务重启）自动重试；HTTP 错误（4xx/5xx）不重试
+async function postJSONRetry(url, body, tries = 3) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await postJSON(url, body);
+    } catch (e) {
+      lastErr = e;
+      if (!/failed to fetch|networkerror|load failed|请求失败 \(0\)/i.test(e.message)) throw e;
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 // 并发限流执行：保持结果顺序，limit 个槽位轮转，单项异常由 fn 自行兜底
 async function runLimited(items, limit, fn) {
   const results = new Array(items.length);
@@ -245,10 +260,10 @@ $("generateBtn").addEventListener("click", async () => {
     let answerChecks = [];
     const vErrs = [];
     await Promise.all([
-      postJSON("/api/verify", { parsed, variants: adaptRes.variants })
+      postJSONRetry("/api/verify", { parsed, variants: adaptRes.variants })
         .then((r) => { scopeChecks = r.scope_checks; setStep(2, "done"); })
         .catch((e) => { setStep(2, "error"); vErrs.push("不超纲校验：" + e.message); }),
-      postJSON("/api/verify_answer", { variants: adaptRes.variants })
+      postJSONRetry("/api/verify_answer", { variants: adaptRes.variants })
         .then((r) => { answerChecks = r.answer_checks; setStep(3, "done"); })
         .catch((e) => { setStep(3, "error"); vErrs.push("答案校验：" + e.message); }),
     ]);

@@ -136,8 +136,12 @@ async def api_parse(
 
 
 @app.post("/api/adapt")
-async def api_adapt(payload: AdaptRequest) -> JSONResponse:
-    """第 2 步：按条件改编（不含校验，便于前端分步显示进度）。"""
+def api_adapt(payload: AdaptRequest) -> JSONResponse:
+    """第 2 步：按条件改编（不含校验，便于前端分步显示进度）。
+
+    用同步 def 让 FastAPI 在线程池中执行：模型调用是阻塞 I/O，避免占住事件循环、
+    保证 /api/verify 与 /api/verify_answer 能真正并发。
+    """
     try:
         result = adapt_problem(payload.parsed, payload.conditions)
     except ConfigError as exc:
@@ -151,8 +155,8 @@ async def api_adapt(payload: AdaptRequest) -> JSONResponse:
 
 
 @app.post("/api/verify")
-async def api_verify(payload: VerifyRequest) -> JSONResponse:
-    """第 3 步：不超纲独立校验。"""
+def api_verify(payload: VerifyRequest) -> JSONResponse:
+    """第 3 步：不超纲独立校验（同步 def → 线程池并发）。"""
     try:
         checks = verify_in_scope(payload.parsed, AdaptResult(variants=payload.variants))
     except ConfigError as exc:
@@ -166,8 +170,8 @@ async def api_verify(payload: VerifyRequest) -> JSONResponse:
 
 
 @app.post("/api/verify_answer")
-async def api_verify_answer(payload: AnswerVerifyRequest) -> JSONResponse:
-    """第 4 步：独立解题复核答案正确性。"""
+def api_verify_answer(payload: AnswerVerifyRequest) -> JSONResponse:
+    """第 4 步：独立解题复核答案正确性（同步 def → 线程池并发）。"""
     try:
         checks = verify_answer(AdaptResult(variants=payload.variants))
     except ConfigError as exc:
@@ -211,7 +215,7 @@ async def api_split(
 
 
 @app.post("/api/export_paper")
-async def api_export_paper(payload: ExportPaperRequest):
+def api_export_paper(payload: ExportPaperRequest):
     try:
         groups = [(g.parsed, g.variants) for g in payload.groups]
         data = export_paper_docx(groups, payload.title, payload.formula_mode)
@@ -269,7 +273,7 @@ async def api_generate(
 
 
 @app.post("/api/export")
-async def api_export(payload: ExportRequest):
+def api_export(payload: ExportRequest):
     try:
         data = export_docx(
             payload.parsed, payload.variants, payload.title, payload.formula_mode
