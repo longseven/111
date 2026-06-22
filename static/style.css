@@ -307,6 +307,8 @@ header { position: relative; }
   z-index: 200;
   padding: 16px;
 }
+/* .modal 的 display:flex 与 .hidden 优先级相同，需更高优先级才能隐藏 */
+.modal.hidden { display: none; }
 .modal-card {
   background: var(--card);
   border-radius: 12px;

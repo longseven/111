@@ -763,6 +763,10 @@ async function saveSettings() {
 }
 $("settingsBtn").addEventListener("click", openSettings);
 $("cfgCloseBtn").addEventListener("click", () => $("settingsModal").classList.add("hidden"));
+// 点弹窗外的灰色遮罩也能关闭
+$("settingsModal").addEventListener("click", (e) => {
+  if (e.target === $("settingsModal")) $("settingsModal").classList.add("hidden");
+});
 $("cfgProvider").addEventListener("change", toggleCfgProvider);
 $("cfgSaveBtn").addEventListener("click", saveSettings);
 
