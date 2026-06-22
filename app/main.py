@@ -99,12 +99,12 @@ def _config_view() -> dict:
 
 
 @app.get("/api/config")
-async def api_config_get() -> JSONResponse:
+def api_config_get() -> JSONResponse:
     return JSONResponse(content=_config_view())
 
 
 @app.post("/api/config")
-async def api_config_set(payload: ConfigUpdate) -> JSONResponse:
+def api_config_set(payload: ConfigUpdate) -> JSONResponse:
     """在线更新 provider/模型/key（不回显明文 key），即时生效无需重启。"""
     try:
         updates = {k: v for k, v in payload.model_dump().items() if v is not None}
@@ -115,16 +115,17 @@ async def api_config_set(payload: ConfigUpdate) -> JSONResponse:
 
 
 @app.post("/api/parse")
-async def api_parse(
+def api_parse(
     file: Optional[UploadFile] = File(default=None),
     text: Optional[str] = Form(default=None),
 ) -> JSONResponse:
+    # 同步 def → FastAPI 线程池执行；阻塞的模型调用不再占住事件循环（多人并发不互相冻结）
     settings = get_settings()
     file_name: Optional[str] = None
     file_bytes: Optional[bytes] = None
 
     if file is not None:
-        data = await file.read()
+        data = file.file.read()
         if len(data) > settings.max_upload_bytes:
             return _error(413, f"文件过大，上限为 {settings.max_upload_bytes // (1024 * 1024)}MB。")
         file_name, file_bytes = file.filename or "upload", data
@@ -194,16 +195,16 @@ def api_verify_answer(payload: AnswerVerifyRequest) -> JSONResponse:
 
 
 @app.post("/api/split")
-async def api_split(
+def api_split(
     file: Optional[UploadFile] = File(default=None),
     text: Optional[str] = Form(default=None),
 ) -> JSONResponse:
-    """整卷：把含多题的试卷拆成一道道独立题目。"""
+    """整卷：把含多题的试卷拆成一道道独立题目（同步 def → 线程池并发）。"""
     settings = get_settings()
     file_name: Optional[str] = None
     file_bytes: Optional[bytes] = None
     if file is not None:
-        data = await file.read()
+        data = file.file.read()
         if len(data) > settings.max_upload_bytes:
             return _error(413, f"文件过大，上限为 {settings.max_upload_bytes // (1024 * 1024)}MB。")
         file_name, file_bytes = file.filename or "upload", data
@@ -238,17 +239,17 @@ def api_export_paper(payload: ExportPaperRequest):
 
 
 @app.post("/api/generate")
-async def api_generate(
+def api_generate(
     file: Optional[UploadFile] = File(default=None),
     text: Optional[str] = Form(default=None),
     conditions: str = Form(default="{}"),
 ) -> JSONResponse:
-    """一步到位：上传题目 + 改编条件 → 解析 + 改编 + 不超纲校验。"""
+    """一步到位：上传题目 + 改编条件 → 解析 + 改编 + 不超纲校验（同步 def → 线程池并发）。"""
     settings = get_settings()
     file_name: Optional[str] = None
     file_bytes: Optional[bytes] = None
     if file is not None:
-        data = await file.read()
+        data = file.file.read()
         if len(data) > settings.max_upload_bytes:
             return _error(413, f"文件过大，上限为 {settings.max_upload_bytes // (1024 * 1024)}MB。")
         file_name, file_bytes = file.filename or "upload", data
@@ -296,9 +297,9 @@ def api_export(payload: ExportRequest):
     )
 
 
-# ---------- 题库：保存 / 列表 / 读取 / 删除 ----------
+# ---------- 题库：保存 / 列表 / 读取 / 删除（同步 def → 线程池，SQLite I/O 不占事件循环） ----------
 @app.post("/api/bank/save")
-async def api_bank_save(payload: BankSaveRequest) -> JSONResponse:
+def api_bank_save(payload: BankSaveRequest) -> JSONResponse:
     try:
         rec = store.save_record(payload.title, payload.kind, payload.payload)
     except Exception as exc:  # noqa: BLE001
@@ -307,7 +308,7 @@ async def api_bank_save(payload: BankSaveRequest) -> JSONResponse:
 
 
 @app.get("/api/bank/list")
-async def api_bank_list() -> JSONResponse:
+def api_bank_list() -> JSONResponse:
     try:
         records = store.list_records()
     except Exception as exc:  # noqa: BLE001
@@ -316,7 +317,7 @@ async def api_bank_list() -> JSONResponse:
 
 
 @app.get("/api/bank/{rec_id}")
-async def api_bank_get(rec_id: int) -> JSONResponse:
+def api_bank_get(rec_id: int) -> JSONResponse:
     try:
         rec = store.get_record(rec_id)
     except Exception as exc:  # noqa: BLE001
@@ -327,7 +328,7 @@ async def api_bank_get(rec_id: int) -> JSONResponse:
 
 
 @app.delete("/api/bank/{rec_id}")
-async def api_bank_delete(rec_id: int) -> JSONResponse:
+def api_bank_delete(rec_id: int) -> JSONResponse:
     try:
         ok = store.delete_record(rec_id)
     except Exception as exc:  # noqa: BLE001

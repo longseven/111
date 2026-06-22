@@ -405,6 +405,44 @@ def test_runtime_ignores_unknown_keys(tmp_path, monkeypatch):
     config.get_settings.cache_clear()
 
 
+# ---------- Tier 1：并发与限流 ----------
+def test_settings_picks_up_runtime_change_without_cache_clear(tmp_path, monkeypatch):
+    """多 worker 关键：另一进程改了 runtime.json，本进程靠 mtime 自动感知（不手动清缓存）。"""
+    from app import config
+
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "runtime.json"))
+    monkeypatch.setenv("OPENAI_MODEL", "env-model")
+    config.get_settings.cache_clear()
+    assert config.get_settings().openai_model == "env-model"
+
+    # 直接写文件（模拟“另一个 worker”改的），不调用 cache_clear
+    import json
+
+    (tmp_path / "runtime.json").write_text(
+        json.dumps({"OPENAI_MODEL": "peer-model"}), encoding="utf-8"
+    )
+    assert config.get_settings().openai_model == "peer-model"
+    config.get_settings.cache_clear()
+
+
+def test_llm_concurrency_default_and_semaphore(monkeypatch):
+    import threading
+
+    from app import config, llm
+
+    monkeypatch.delenv("LLM_MAX_CONCURRENCY", raising=False)
+    config.get_settings.cache_clear()
+    assert config.get_settings().llm_max_concurrency == 4  # 默认
+
+    llm._llm_semaphore.cache_clear()
+    sem = llm._llm_semaphore()
+    assert isinstance(sem, threading.BoundedSemaphore().__class__)
+    # 能正常 acquire/release（信号量可用）
+    assert sem.acquire(timeout=1) is True
+    sem.release()
+    llm._llm_semaphore.cache_clear()
+
+
 # ---------- 报错脱敏（防 key 泄露） ----------
 def test_redact_masks_api_keys():
     from app.main import _redact

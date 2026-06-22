@@ -15,9 +15,14 @@ COPY static ./static
 
 # 运行时数据（题库 SQLite + 在线设置覆盖）落在挂载卷里，重建容器不丢
 ENV CONFIG_PATH=/app/data/runtime.json \
-    BANK_DB_PATH=/app/data/bank.db
+    BANK_DB_PATH=/app/data/bank.db \
+    WEB_CONCURRENCY=2 \
+    LLM_MAX_CONCURRENCY=4
+
 VOLUME ["/app/data"]
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 多 worker 提升并发吞吐（WEB_CONCURRENCY 控制进程数）。
+# 总出站并发 ≈ WEB_CONCURRENCY × LLM_MAX_CONCURRENCY，按代理额度调。
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-2}"]

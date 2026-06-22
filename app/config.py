@@ -108,6 +108,8 @@ class Settings:
         self.max_tokens: int = int(os.environ.get("MAX_TOKENS", "16000"))
         self.max_upload_bytes: int = int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
         self.request_timeout: float = float(os.environ.get("REQUEST_TIMEOUT", "300"))
+        # 单进程内同时在飞的模型调用上限（出站限流，防止多人并发把代理打挂）
+        self.llm_max_concurrency: int = max(1, int(os.environ.get("LLM_MAX_CONCURRENCY", "4")))
 
     @property
     def model(self) -> str:
@@ -120,6 +122,24 @@ class Settings:
         return bool(self.anthropic_api_key.strip())
 
 
-@lru_cache
-def get_settings() -> Settings:
+def _runtime_sig():
+    """runtime.json 的版本签名（mtime）。用于多 worker 下感知在线设置变更：
+    任一 worker 改了设置，其他 worker 下次取配置时 mtime 变化→自动重建，无需重启。"""
+    path = _runtime_path()
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+@lru_cache(maxsize=8)
+def _build_settings(_sig) -> Settings:
     return Settings()
+
+
+def get_settings() -> Settings:
+    return _build_settings(_runtime_sig())
+
+
+# 兼容旧调用（update_runtime / 测试）：清空设置缓存
+get_settings.cache_clear = _build_settings.cache_clear  # type: ignore[attr-defined]

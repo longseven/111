@@ -28,8 +28,12 @@ def _db_path() -> Path:
 def _connect() -> sqlite3.Connection:
     path = _db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    # timeout：多 worker 进程并发写时等待锁而非直接报错；WAL：读写并发更顺；
+    # busy_timeout：遇锁最多等 10s。进程内仍有 _lock 串行化，跨进程靠这些 pragma。
+    conn = sqlite3.connect(path, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
     return conn
 
 

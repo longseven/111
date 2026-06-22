@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from functools import lru_cache
 from typing import Any, Dict, List, Type, TypeVar
 
 from pydantic import BaseModel
@@ -24,6 +26,16 @@ class ConfigError(RuntimeError):
     """缺少必要配置（如 API key）。"""
 
 
+@lru_cache(maxsize=1)
+def _llm_semaphore() -> "threading.BoundedSemaphore":
+    """限制单进程内同时在飞的模型调用数（出站限流）。
+
+    调用跑在 FastAPI 线程池里，用线程信号量最自然：超出上限的调用阻塞排队，
+    既不丢请求、也不会瞬间把代理打满触发限流。上限由 LLM_MAX_CONCURRENCY 决定。
+    """
+    return threading.BoundedSemaphore(get_settings().llm_max_concurrency)
+
+
 def structured_completion(system: str, parts: List[Dict[str, Any]], output_format: Type[T]) -> T:
     settings = get_settings()
     if not settings.has_api_key:
@@ -31,9 +43,11 @@ def structured_completion(system: str, parts: List[Dict[str, Any]], output_forma
             raise ConfigError("未配置 OPENAI_API_KEY，请在环境变量中设置后重试。")
         raise ConfigError("未配置 ANTHROPIC_API_KEY，请在环境变量中设置后重试。")
 
-    if settings.provider == "openai":
-        return _openai_structured(system, parts, output_format)
-    return _anthropic_structured(system, parts, output_format)
+    # 出站限流：并发模型调用受信号量约束，超额请求排队等待空位
+    with _llm_semaphore():
+        if settings.provider == "openai":
+            return _openai_structured(system, parts, output_format)
+        return _anthropic_structured(system, parts, output_format)
 
 
 # ---------- Anthropic 官方 ----------

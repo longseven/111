@@ -57,6 +57,20 @@ docker compose up -d        # 然后浏览器打开 http://127.0.0.1:8000
 在线填 provider / 模型 / key，即时生效、无需重启。题库与在线设置持久化在挂载卷 `./data`，
 重建容器不丢。
 
+## 多人并发
+
+为多人同时使用做了三件事：
+
+- **不互相冻结**：所有耗时接口（解析/改编/校验/导出）跑在线程池里，一个人的慢生成
+  不会卡住其他人的请求。
+- **多进程吞吐**：Docker 默认起 `WEB_CONCURRENCY=2` 个 uvicorn worker（建议设为 CPU 核数）；
+  在线设置改动靠 `runtime.json` 的 mtime 在各 worker 间自动同步，无需重启。
+- **出站限流**：`LLM_MAX_CONCURRENCY`（默认 4）限制单进程同时在飞的模型调用数，超额排队，
+  避免把代理打到限流。总出站并发 ≈ `WEB_CONCURRENCY × LLM_MAX_CONCURRENCY`，按代理额度调。
+
+> 题库为本地 SQLite（WAL 模式，多进程读写安全），适合小团队（约 5–20 人）。更大规模的
+> 用户隔离、配额、Postgres、任务队列属于后续工作。
+
 ## 切换 provider（Anthropic 官方 / OpenAI 兼容代理）
 
 用环境变量 `LLM_PROVIDER` 切换，完整示例见 `.env.example`。
