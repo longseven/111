@@ -55,7 +55,7 @@ docker compose up -d        # 然后浏览器打开 http://127.0.0.1:8000
 
 配置可走两条路：① 提供 `.env`（见 `.env.example`）；② 启动后在页面右上角 **「⚙ 设置」** 里
 在线填 provider / 模型 / key，即时生效、无需重启。题库与在线设置持久化在挂载卷 `./data`，
-重建容器不丢。设 `APP_PASSWORD` 即开启访问口令（页面需登录）。
+重建容器不丢。
 
 ## 切换 provider（Anthropic 官方 / OpenAI 兼容代理）
 
@@ -108,7 +108,6 @@ OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt
 | `DELETE` | `/api/bank/{id}` | 删除单条题库记录 |
 | `GET` | `/api/config` | 当前 provider/模型/base_url + 是否已配置 key（key 不回显） |
 | `POST` | `/api/config` | 在线更新 provider/模型/key（写运行时覆盖文件，即时生效） |
-| `POST` | `/api/login` | 设置了 `APP_PASSWORD` 时用口令换登录 Cookie |
 
 支持的上传类型：图片（png/jpg/jpeg/webp/gif）、PDF、文本（txt/md），或直接粘贴文本。
 

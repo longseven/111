@@ -405,22 +405,6 @@ def test_runtime_ignores_unknown_keys(tmp_path, monkeypatch):
     config.get_settings.cache_clear()
 
 
-# ---------- 访问口令 ----------
-def test_auth_token_and_validation(monkeypatch):
-    from app import config
-
-    monkeypatch.delenv("APP_PASSWORD", raising=False)
-    assert config.auth_enabled() is False
-    assert config.valid_token(None) is True  # 未开启则一律放行
-
-    monkeypatch.setenv("APP_PASSWORD", "secret123")
-    assert config.auth_enabled() is True
-    tok = config.make_auth_token("secret123")
-    assert config.valid_token(tok) is True
-    assert config.valid_token("bad") is False
-    assert config.valid_token(None) is False
-
-
 # ---------- .env 加载 ----------
 def test_load_dotenv(tmp_path):
     import os

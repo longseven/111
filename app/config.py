@@ -6,8 +6,6 @@
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import os
 from functools import lru_cache
@@ -125,29 +123,3 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
-
-# ---------- 可选访问口令（轻量多用户/团队内网访问控制） ----------
-AUTH_COOKIE = "k12_auth"
-
-
-def auth_password() -> str:
-    return os.environ.get("APP_PASSWORD", "").strip()
-
-
-def auth_enabled() -> bool:
-    return bool(auth_password())
-
-
-def make_auth_token(password: str) -> str:
-    """由口令派生不可逆登录令牌，写进 Cookie；改口令即令旧 Cookie 失效。"""
-    secret = os.environ.get("APP_SECRET", "k12-adapt-secret")
-    return hmac.new(secret.encode("utf-8"), password.encode("utf-8"), hashlib.sha256).hexdigest()
-
-
-def valid_token(token: str | None) -> bool:
-    if not auth_enabled():
-        return True
-    if not token:
-        return False
-    return hmac.compare_digest(token, make_auth_token(auth_password()))

@@ -172,7 +172,6 @@ function clearGenError() {
 
 async function postForm(url, form) {
   const res = await fetch(url, { method: "POST", body: form });
-  if (res.status === 401) showLogin();
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
   return data;
@@ -183,7 +182,6 @@ async function postJSON(url, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (res.status === 401) showLogin();
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
   return data;
@@ -690,31 +688,6 @@ async function deleteBankRecord(id) {
 $("saveBankBtn").addEventListener("click", saveToBank);
 $("refreshBankBtn").addEventListener("click", loadBankList);
 
-// ---------- 登录 ----------
-function showLogin() {
-  $("loginModal").classList.remove("hidden");
-}
-$("loginBtn").addEventListener("click", async () => {
-  const pwd = $("loginPwd").value;
-  try {
-    const res = await fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: pwd }),
-    });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error || "登录失败");
-    $("loginModal").classList.add("hidden");
-    $("loginError").classList.add("hidden");
-    toast("登录成功");
-    refreshConfigBadge();
-    loadBankList();
-  } catch (err) {
-    $("loginError").textContent = err.message;
-    $("loginError").classList.remove("hidden");
-  }
-});
-
 // ---------- 在线设置 ----------
 function setKeyState(id, ok) {
   const el = $(id);
@@ -729,10 +702,6 @@ function toggleCfgProvider() {
 async function refreshConfigBadge() {
   try {
     const res = await fetch("/api/config");
-    if (res.status === 401) {
-      showLogin();
-      return;
-    }
     const c = await res.json();
     state.config = c;
     $("modelBadge").textContent =
@@ -744,10 +713,6 @@ async function refreshConfigBadge() {
 async function openSettings() {
   try {
     const res = await fetch("/api/config");
-    if (res.status === 401) {
-      showLogin();
-      return;
-    }
     const c = await res.json();
     $("cfgProvider").value = c.provider === "anthropic" ? "anthropic" : "openai";
     $("cfgOpenaiBase").value = c.openai_base_url || "";
@@ -781,10 +746,6 @@ async function saveSettings() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (res.status === 401) {
-      showLogin();
-      return;
-    }
     const c = await res.json();
     if (!res.ok) throw new Error(c.error || "保存失败");
     state.config = c;
