@@ -16,8 +16,10 @@ from .prompts import (
     ANSWER_VERIFY_SYSTEM,
     PARSE_SYSTEM,
     SPLIT_SYSTEM,
+    SYMPY_VERIFY_SYSTEM,
     VERIFY_SYSTEM,
 )
+from .sandbox import run_check
 from .schemas import (
     AdaptConditions,
     AdaptResult,
@@ -25,6 +27,7 @@ from .schemas import (
     PaperSplit,
     ParsedProblem,
     ScopeCheckResult,
+    SympyCheckResult,
 )
 
 __all__ = [
@@ -34,6 +37,7 @@ __all__ = [
     "adapt_problem",
     "verify_in_scope",
     "verify_answer",
+    "verify_answer_sympy",
     "split_paper",
     "format_choices",
 ]
@@ -105,6 +109,51 @@ def verify_answer(result: AdaptResult) -> AnswerCheckResult:
     return structured_completion(
         ANSWER_VERIFY_SYSTEM, [text_part(user_text)], AnswerCheckResult
     )
+
+
+def verify_answer_sympy(result: AdaptResult) -> List[Dict[str, Any]]:
+    """sympy 数值验算：模型为每题生成验算代码，在沙箱中实际运行核对答案。
+
+    返回每题 {index, checkable, passed, computed, note, error}：
+    - passed=True/False 表示沙箱算出的答案与 given_answer 一致/不一致；
+    - passed=None 表示不可判定（不适合验算 / 代码出错 / 超时）。
+    """
+    payload = [
+        {"index": i, "stem": v.stem, "given_answer": v.answer}
+        for i, v in enumerate(result.variants)
+    ]
+    user_text = (
+        "请为下列每道题写 sympy 验算代码，核对各自的 given_answer：\n"
+        + json.dumps(payload, ensure_ascii=False, indent=2)
+    )
+    gen: SympyCheckResult = structured_completion(
+        SYMPY_VERIFY_SYSTEM, [text_part(user_text)], SympyCheckResult
+    )
+    by_index = {c.index: c for c in gen.checks}
+
+    out: List[Dict[str, Any]] = []
+    for i in range(len(result.variants)):
+        c = by_index.get(i)
+        if c is None or not c.checkable:
+            out.append({
+                "index": i,
+                "checkable": False,
+                "passed": None,
+                "computed": "",
+                "note": (c.note if c else "") or "该题不适合 sympy 验算。",
+                "error": "",
+            })
+            continue
+        run = run_check(c.code)
+        out.append({
+            "index": i,
+            "checkable": True,
+            "passed": run["result"],
+            "computed": run["computed"],
+            "note": c.note,
+            "error": run["error"],
+        })
+    return out
 
 
 def verify_in_scope(parsed: ParsedProblem, result: AdaptResult) -> ScopeCheckResult:

@@ -160,7 +160,7 @@ function hideProgress() {
   $("progress").classList.add("hidden");
 }
 
-const STEP_NAMES = ["识别原题", "改编生成", "不超纲校验", "答案校验"];
+const STEP_NAMES = ["识别原题", "改编生成", "不超纲校验", "答案校验", "数值验算"];
 function showGenError(msg) {
   const el = $("genError");
   el.textContent = msg;
@@ -255,20 +255,32 @@ $("generateBtn").addEventListener("click", async () => {
     });
     setStep(1, "done");
 
-    // ③④ 不超纲校验 + 答案校验：互不依赖，并行执行以提速
+    // ③④⑤ 不超纲校验 + 答案校验 +（可选）sympy 数值验算：互不依赖，并行执行以提速
+    const useSympy = $("sympyVerify").checked;
     setStep(2, "active");
     setStep(3, "active");
     let scopeChecks = [];
     let answerChecks = [];
+    let sympyChecks = [];
     const vErrs = [];
-    await Promise.all([
+    const tasks = [
       postJSONRetry("/api/verify", { parsed, variants: adaptRes.variants })
         .then((r) => { scopeChecks = r.scope_checks; setStep(2, "done"); })
         .catch((e) => { setStep(2, "error"); vErrs.push("不超纲校验：" + e.message); }),
       postJSONRetry("/api/verify_answer", { variants: adaptRes.variants })
         .then((r) => { answerChecks = r.answer_checks; setStep(3, "done"); })
         .catch((e) => { setStep(3, "error"); vErrs.push("答案校验：" + e.message); }),
-    ]);
+    ];
+    if (useSympy) {
+      $("progress").querySelector('.pstep[data-step="4"]').classList.remove("hidden");
+      setStep(4, "active");
+      tasks.push(
+        postJSONRetry("/api/verify_sympy", { variants: adaptRes.variants })
+          .then((r) => { sympyChecks = r.sympy_checks; setStep(4, "done"); })
+          .catch((e) => { setStep(4, "error"); vErrs.push("数值验算：" + e.message); })
+      );
+    }
+    await Promise.all(tasks);
     if (vErrs.length) {
       showGenError(vErrs.join("\n") + "\n（改编结果已照常显示，仅缺对应徽章，可稍后重试）");
     }
@@ -281,6 +293,7 @@ $("generateBtn").addEventListener("click", async () => {
       variants: adaptRes.variants,
       scope_checks: scopeChecks,
       answer_checks: answerChecks,
+      sympy_checks: sympyChecks,
     });
     show("step-results");
     setTimeout(hideProgress, 700);
@@ -362,7 +375,7 @@ function renderParsedSummary(p) {
 let copyRegistry = [];
 
 function variantCardHtml(v, displayIndex, opts = {}) {
-  const { check, ans, showBadges = true } = opts;
+  const { check, ans, sym, showBadges = true } = opts;
   const passed = check ? check.passed : true;
   let badge = "";
   if (showBadges) {
@@ -376,22 +389,36 @@ function variantCardHtml(v, displayIndex, opts = {}) {
       ? '<span class="badge ok">✓ 答案已复核</span>'
       : '<span class="badge bad">✗ 答案存疑</span>';
   }
+  // sympy 数值验算徽章：passed true/false/null（不可验算）
+  let symBadge = "";
+  if (showBadges && sym) {
+    if (sym.passed === true) symBadge = '<span class="badge ok">✓ 数值已验算</span>';
+    else if (sym.passed === false) symBadge = '<span class="badge bad">✗ 数值不符</span>';
+    else symBadge = '<span class="badge neutral">— 数值未验算</span>';
+  }
   const ansBlock = showBadges && ans && !ans.correct
     ? `<div class="field reason" style="background:#fbeae8;border-left-color:var(--bad)"><div class="label">答案存疑</div>独立复核正确答案应为：${escBr(ans.correct_answer)}<br>${esc(ans.reason)}</div>`
     : "";
+  let symBlock = "";
+  if (showBadges && sym && sym.passed === false) {
+    symBlock = `<div class="field reason" style="background:#fbeae8;border-left-color:var(--bad)"><div class="label">sympy 验算不符</div>独立计算结果为：${escBr(sym.computed || "—")}<br>${esc(sym.note || "")}</div>`;
+  } else if (showBadges && sym && sym.passed === null && sym.error) {
+    symBlock = `<div class="field"><div class="label">数值验算</div>未能验算：${esc(sym.error)}</div>`;
+  }
   const checkReason = showBadges && check
     ? `<div class="field"><div class="label">校验说明</div>${esc(check.reason)}</div>`
     : "";
   const kps = (v.knowledge_points || [])
     .map((k) => `<span class="tag">${esc(k)}</span>`).join("");
-  const flagged = showBadges && !(passed && (!ans || ans.correct));
+  const flagged = showBadges && !(passed && (!ans || ans.correct) && (!sym || sym.passed !== false));
   const cid = copyRegistry.push(v) - 1;
   return `
     <div class="variant ${flagged ? "flagged" : ""}">
-      <h3>新题 ${displayIndex} ${badge} ${ansBadge}</h3>
+      <h3>新题 ${displayIndex} ${badge} ${ansBadge} ${symBadge}</h3>
       <div class="field stem"><div class="label">题干</div>${escBr(v.stem)}</div>
       <div class="field"><div class="label">参考答案</div>${escBr(v.answer)}</div>
       ${ansBlock}
+      ${symBlock}
       <div class="field"><div class="label">解析</div>${escBr(v.solution)}</div>
       <div class="field"><div class="label">知识点</div>${kps}　难度：${esc(v.difficulty)}</div>
       <div class="field reason"><div class="label">改编理由</div>${escBr(v.adaptation_reason)}</div>
@@ -484,12 +511,15 @@ function renderResults(data) {
   (data.scope_checks || []).forEach((c) => { checksByIndex[c.index] = c; });
   const ansByIndex = {};
   (data.answer_checks || []).forEach((c) => { ansByIndex[c.index] = c; });
+  const symByIndex = {};
+  (data.sympy_checks || []).forEach((c) => { symByIndex[c.index] = c; });
 
   const html = (data.variants || [])
     .map((v, i) =>
       variantCardHtml(v, i + 1, {
         check: checksByIndex[i],
         ans: ansByIndex[i],
+        sym: symByIndex[i],
         showBadges: true,
       })
     )

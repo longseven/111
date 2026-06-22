@@ -524,6 +524,61 @@ def test_redact_masks_api_keys():
     assert _redact("普通报错：超时") == "普通报错：超时"  # 无密钥不动
 
 
+# ---------- sympy 数值验算 ----------
+def test_sandbox_correct_wrong_and_blocked():
+    from app.sandbox import run_check
+
+    ok = run_check(
+        "import sympy\ncomputed = sympy.Rational(1,2)+sympy.Rational(1,3)\n"
+        "result = sympy.simplify(computed - sympy.Rational(5,6))==0\ncomputed=str(computed)"
+    )
+    assert ok["ran"] is True and ok["result"] is True and "5/6" in ok["computed"]
+
+    bad = run_check("from sympy import Rational\ncomputed=Rational(5,6)\nresult=(computed==1)")
+    assert bad["result"] is False
+
+    blocked = run_check("import os\nresult=True")
+    assert blocked["result"] is None and "sympy" in blocked["error"]
+
+    slow = run_check("while True:\n    pass", timeout=2)
+    assert slow["ran"] is False and "超时" in slow["error"]
+
+
+def test_sympy_schema_roundtrip():
+    from app.schemas import SympyCheck, SympyCheckResult
+
+    r = SympyCheckResult(checks=[SympyCheck(index=0, checkable=True, code="result=True", note="x")])
+    assert SympyCheckResult(**r.model_dump()).checks[0].checkable is True
+
+
+def test_verify_answer_sympy_merges(monkeypatch):
+    from app import claude_service
+    from app.schemas import AdaptResult, SympyCheck, SympyCheckResult
+
+    variants = _sample_variants()  # 1 道
+
+    def fake_completion(system, parts, output_format):
+        return SympyCheckResult(
+            checks=[SympyCheck(index=0, checkable=True, code="result=True\ncomputed='42'", note="ok")]
+        )
+
+    monkeypatch.setattr(claude_service, "structured_completion", fake_completion)
+    out = claude_service.verify_answer_sympy(AdaptResult(variants=variants))
+    assert out[0]["checkable"] is True and out[0]["passed"] is True and out[0]["computed"] == "42"
+
+
+def test_verify_answer_sympy_not_checkable(monkeypatch):
+    from app import claude_service
+    from app.schemas import AdaptResult, SympyCheck, SympyCheckResult
+
+    def fake_completion(system, parts, output_format):
+        return SympyCheckResult(checks=[SympyCheck(index=0, checkable=False, code="", note="纯证明题")])
+
+    monkeypatch.setattr(claude_service, "structured_completion", fake_completion)
+    out = claude_service.verify_answer_sympy(AdaptResult(variants=_sample_variants()))
+    assert out[0]["checkable"] is False and out[0]["passed"] is None
+
+
 # ---------- .env 加载 ----------
 def test_load_dotenv(tmp_path):
     import os

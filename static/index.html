@@ -118,6 +118,10 @@
           <input type="checkbox" id="allowExtension" />
           允许轻微拓展知识点（默认严格不超纲）
         </label>
+        <label class="checkbox">
+          <input type="checkbox" id="sympyVerify" />
+          用 sympy 实际验算数值答案（更准，稍慢；仅单题模式）
+        </label>
         <label class="full">改编要求（自由描述，可空）
           <textarea id="extraInstructions" rows="4" placeholder="用一句话口述你的要求，如：改成关于篮球比赛的应用题，难度高一点，出 3 道"></textarea>
         </label>
@@ -128,6 +132,7 @@
         <div class="pstep" data-step="1"><span class="pdot"></span>改编生成</div>
         <div class="pstep" data-step="2"><span class="pdot"></span>不超纲校验</div>
         <div class="pstep" data-step="3"><span class="pdot"></span>答案校验</div>
+        <div class="pstep hidden" data-step="4"><span class="pdot"></span>数值验算</div>
       </div>
       <div id="paperStatus" class="paper-status hidden"></div>
       <div id="genError" class="gen-error hidden"></div>

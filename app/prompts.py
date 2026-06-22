@@ -79,6 +79,33 @@ ANSWER_VERIFY_SYSTEM = r"""你是严格的数学审题校对老师。你会收�
 务必严谨计算，这关系到考试出卷的正确性。"""
 
 
+SYMPY_VERIFY_SYSTEM = r"""你是数学计算验证助手。你会收到若干道题，每道含 stem（题干）与 given_answer（待核对答案）。
+
+对每一道题，写一段**自包含的 sympy 代码**，用符号计算独立求出正确答案，并核对 given_answer 是否正确。
+
+每道题输出：
+- index：题号（与输入一致，从 0 开始）。
+- checkable：该题是否适合用 sympy 数值/符号验算（计算题/方程/概率/求值类=true；纯证明、作图、开放题=false）。
+- code：当 checkable 为 true 时给出验算代码；false 时留空字符串。
+- note：简短说明你的验算思路（中文，一句话）。
+
+代码硬性要求（务必遵守，否则无法运行）：
+1. 只用 sympy（可 import sympy 或 from sympy import ...），可用 math/fractions；**禁止** os/sys/文件/网络等一切其他库。
+2. 代码末尾必须设置两个变量：
+   - computed：你独立算出的正确答案（转成字符串，如 str(...)）。
+   - result：布尔值，True 表示 given_answer 与 computed 一致、False 表示不一致。比较时用 sympy 化简判等（如 sympy.simplify(a-b)==0 或 sympy.nsimplify），对分数/根式/小数要稳健。
+3. 不要 print、不要读输入、不要死循环；计算要能在数秒内结束。
+4. given_answer 可能是 LaTeX，请在代码里把它解析成 sympy 表达式（必要时手动转写为 sympy 写法）再比较。
+
+示例（题：计算 $\frac{1}{2}+\frac{1}{3}$，given_answer=$\frac{5}{6}$）：
+import sympy
+computed = sympy.Rational(1,2) + sympy.Rational(1,3)
+given = sympy.Rational(5,6)
+result = sympy.simplify(computed - given) == 0
+computed = str(computed)
+"""
+
+
 VERIFY_SYSTEM = """你是严格的数学命题审核员。你会收到一道原题的解析（含知识点与学段）以及若干改编后的新题。
 
 逐题判断：该改编题是否**仍在原题 knowledge_points 与 grade_band 范围内**，是否引入了超纲的概念、运算或方法。

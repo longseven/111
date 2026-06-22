@@ -18,6 +18,7 @@ from .claude_service import (
     parse_problem,
     split_paper,
     verify_answer,
+    verify_answer_sympy,
     verify_in_scope,
 )
 from .config import get_settings, update_runtime
@@ -33,6 +34,7 @@ from .schemas import (
     ConfigUpdate,
     ExportPaperRequest,
     ExportRequest,
+    SympyVerifyRequest,
     VerifyRequest,
 )
 
@@ -291,6 +293,21 @@ def api_verify_answer(payload: AnswerVerifyRequest) -> JSONResponse:
         return _server_error(f"答案校验失败：{exc}")
 
     return JSONResponse(content={"answer_checks": [c.model_dump() for c in checks.checks]})
+
+
+@app.post("/api/verify_sympy")
+def api_verify_sympy(payload: SympyVerifyRequest) -> JSONResponse:
+    """可选：用 sympy 在沙箱中实际验算每题数值答案（同步 def → 线程池）。"""
+    try:
+        checks = verify_answer_sympy(AdaptResult(variants=payload.variants))
+    except ConfigError as exc:
+        return _error(500, str(exc))
+    except RefusalError as exc:
+        return _error(422, str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return _server_error(f"数值验算失败：{exc}")
+
+    return JSONResponse(content={"sympy_checks": checks})
 
 
 @app.post("/api/split")

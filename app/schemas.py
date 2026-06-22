@@ -124,6 +124,24 @@ class AnswerVerifyRequest(BaseModel):
     variants: List[AdaptedVariant]
 
 
+# ---------- sympy 数值验算 ----------
+class SympyCheck(BaseModel):
+    """模型为单题给出的 sympy 验算代码（随后在沙箱中实际运行）。"""
+
+    index: int = Field(description="对应改编题序号，从 0 开始。")
+    checkable: bool = Field(description="该题是否适合用 sympy 验算（计算/方程/求值=是，纯证明/作图=否）。")
+    code: str = Field(description="自包含 sympy 代码，末尾须设 result(bool) 与 computed(str)；checkable 为 false 时留空。")
+    note: str = Field(description="一句话验算思路。")
+
+
+class SympyCheckResult(BaseModel):
+    checks: List[SympyCheck] = Field(description="逐题的 sympy 验算代码。")
+
+
+class SympyVerifyRequest(BaseModel):
+    variants: List[AdaptedVariant]
+
+
 # ---------- 整卷（多题） ----------
 class PaperSplit(BaseModel):
     problems: List[str] = Field(
