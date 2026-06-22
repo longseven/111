@@ -135,15 +135,15 @@
         <h2><span class="step-num">2</span> 改编结果</h2>
         <div class="actions">
           <select id="formulaMode" title="公式格式">
-            <option value="image">图片公式（WPS 兼容）</option>
-            <option value="omml">可编辑公式（Word）</option>
+            <option value="image">图片公式（WPS／Word 都正常）⭐推荐</option>
+            <option value="omml">可编辑公式（仅 Microsoft Word，WPS 会缺分子）</option>
           </select>
           <button class="link" id="exportWordBtn">导出 Word</button>
           <button class="link" id="exportBtn">导出 JSON</button>
           <button class="link" id="saveBankBtn">★ 存入题库</button>
         </div>
       </div>
-      <p class="hint edit-hint">提示：点每道题的「编辑」可直接修改题干/答案/解析，改完即用于导出与保存。</p>
+      <p class="hint edit-hint">公式格式：<b>用 WPS 打开就选「图片公式」</b>（到处都能正常显示）；只有用 Microsoft Word 且想再编辑公式时才选「可编辑公式」。点每道题的「编辑」可直接改题干/答案/解析，改完即用于导出与保存。</p>
       <div id="parsedSummary" class="parsed-summary"></div>
       <div id="resultsView"></div>
     </section>
