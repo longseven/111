@@ -405,6 +405,15 @@ def test_runtime_ignores_unknown_keys(tmp_path, monkeypatch):
     config.get_settings.cache_clear()
 
 
+# ---------- 报错脱敏（防 key 泄露） ----------
+def test_redact_masks_api_keys():
+    from app.main import _redact
+
+    assert _redact("bad key sk-r8UiMt8qHwm0CGpv3Qd9LOhO yes") == "bad key sk-r8*** yes"
+    assert "Bearer ***" in _redact("Authorization: Bearer sk-proj-abcdef1234567890")
+    assert _redact("普通报错：超时") == "普通报错：超时"  # 无密钥不动
+
+
 # ---------- .env 加载 ----------
 def test_load_dotenv(tmp_path):
     import os

@@ -1,6 +1,7 @@
 """FastAPI 应用：解析 / 改编两个接口 + 静态前端。"""
 from __future__ import annotations
 
+import re
 import traceback
 from pathlib import Path
 from typing import Optional
@@ -41,8 +42,16 @@ app = FastAPI(title="K12 数学题目改编系统")
 store.init_db()
 
 
+# 脱敏：抹掉可能混进异常文字里的 API key / Bearer 令牌，避免随报错泄露
+_SECRET_RE = re.compile(r"(sk-[A-Za-z0-9]{2})[A-Za-z0-9_\-]{6,}|(Bearer\s+)[A-Za-z0-9._\-]{8,}")
+
+
+def _redact(text: str) -> str:
+    return _SECRET_RE.sub(lambda m: (m.group(1) or m.group(2) or "") + "***", str(text))
+
+
 def _error(status: int, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status, content={"error": message})
+    return JSONResponse(status_code=status, content={"error": _redact(message)})
 
 
 @app.middleware("http")
