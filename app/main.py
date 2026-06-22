@@ -1,13 +1,14 @@
 """FastAPI 应用：解析 / 改编两个接口 + 静态前端。"""
 from __future__ import annotations
 
+import json
 import re
 import traceback
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, store
@@ -15,6 +16,7 @@ from .claude_service import (
     ConfigError,
     RefusalError,
     adapt_problem,
+    adapt_problem_stream,
     parse_problem,
     split_paper,
     verify_answer,
@@ -263,6 +265,44 @@ def api_adapt(payload: AdaptRequest, request: Request) -> JSONResponse:
 
     auth.consume(u["id"], u["is_admin"])  # 仅成功才扣配额
     return JSONResponse(content={"variants": [v.model_dump() for v in result.variants]})
+
+
+def _sse(obj: dict) -> str:
+    return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+
+@app.post("/api/adapt_stream")
+def api_adapt_stream(payload: AdaptRequest, request: Request):
+    """第 2 步（流式）：边生成边推送文本增量，最后推送结构化变体（边出边显）。"""
+    u = request.state.user
+    try:
+        auth.check_quota(u["id"], u["is_admin"])
+    except auth.QuotaError as exc:
+        return _error(429, str(exc))
+
+    def gen():
+        try:
+            for kind, value in adapt_problem_stream(payload.parsed, payload.conditions):
+                if kind == "delta":
+                    yield _sse({"type": "delta", "text": value})
+                elif kind == "done":
+                    auth.consume(u["id"], u["is_admin"])  # 仅成功才扣配额
+                    yield _sse(
+                        {"type": "done", "variants": [v.model_dump() for v in value.variants]}
+                    )
+        except RefusalError as exc:
+            yield _sse({"type": "error", "error": _redact(str(exc))})
+        except ConfigError as exc:
+            yield _sse({"type": "error", "error": _redact(str(exc))})
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc()
+            yield _sse({"type": "error", "error": _redact(f"改编失败：{exc}")})
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/verify")

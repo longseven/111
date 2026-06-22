@@ -130,6 +130,7 @@ OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt
 | `POST` | `/api/generate` | `multipart/form-data`：`file`（可选）+ `text`（可选）+ `conditions`（JSON 串）→ 一步完成解析+改编+校验，返回 `{parsed, variants, scope_checks}` |
 | `POST` | `/api/parse` | `multipart/form-data`：`file`（可选）+ `text`（可选）→ 返回 `ParsedProblem`（分步①，前端显示进度用） |
 | `POST` | `/api/adapt` | JSON：`{parsed, conditions}` → 返回 `{variants}`（分步②） |
+| `POST` | `/api/adapt_stream` | JSON：`{parsed, conditions}` → **SSE 流式**：`delta` 文本增量 + `done` 结构化变体（边出边显，单题模式默认走它，失败回退 `/api/adapt`） |
 | `POST` | `/api/verify` | JSON：`{parsed, variants}` → 返回 `{scope_checks}`（分步③，不超纲校验） |
 | `POST` | `/api/verify_answer` | JSON：`{variants}` → 返回 `{answer_checks}`（分步④，独立解题复核答案正确性） |
 | `POST` | `/api/verify_sympy` | JSON：`{variants}` → 返回 `{sympy_checks}`（可选⑤，模型生成 sympy 代码在沙箱实跑核对数值答案） |

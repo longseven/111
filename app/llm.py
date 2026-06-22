@@ -50,6 +50,86 @@ def structured_completion(system: str, parts: List[Dict[str, Any]], output_forma
         return _anthropic_structured(system, parts, output_format)
 
 
+def stream_completion(system: str, parts: List[Dict[str, Any]], output_format: Type[T]):
+    """流式版本：边生成边产出文本增量，最后产出解析好的结构化结果。
+
+    产出元组序列：("delta", 文本片段) ... ("done", 解析结果)。
+    OpenAI 兼容代理走真流式；Anthropic 简化为整体返回（产出一次 delta + done）。
+    """
+    settings = get_settings()
+    if not settings.has_api_key:
+        if settings.provider == "openai":
+            raise ConfigError("未配置 OPENAI_API_KEY，请在环境变量中设置后重试。")
+        raise ConfigError("未配置 ANTHROPIC_API_KEY，请在环境变量中设置后重试。")
+
+    with _llm_semaphore():
+        if settings.provider == "openai":
+            yield from _openai_stream(system, parts, output_format)
+        else:
+            obj = _anthropic_structured(system, parts, output_format)
+            yield ("done", obj)
+
+
+def _openai_stream(system: str, parts: List[Dict[str, Any]], output_format: Type[T]):
+    try:
+        from openai import OpenAI
+    except ImportError as exc:  # pragma: no cover
+        raise ConfigError("未安装 openai 库，请先执行 pip install openai。") from exc
+
+    settings = get_settings()
+    client = OpenAI(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url or None,
+        timeout=settings.request_timeout,
+    )
+    content = to_openai_content(parts)
+    schema = json.dumps(output_format.model_json_schema(), ensure_ascii=False)
+    sys_msg = (
+        system
+        + "\n\n只输出一个 JSON 对象，必须严格符合以下 JSON Schema；"
+        + "不要输出任何额外文字、解释或 Markdown 代码块：\n"
+        + schema
+    )
+    messages = [
+        {"role": "system", "content": sys_msg},
+        {"role": "user", "content": content},
+    ]
+
+    # 流式不带 response_format（第三方代理兼容性更好）；token 参数名做一次回退
+    token_key = "max_tokens"
+    for attempt in range(2):
+        try:
+            stream = client.chat.completions.create(
+                model=settings.model,
+                messages=messages,
+                stream=True,
+                **{token_key: settings.max_tokens},
+            )
+            break
+        except Exception as exc:  # noqa: BLE001
+            msg = str(exc).lower()
+            if attempt == 0 and token_key == "max_tokens" and "max_completion_tokens" in msg:
+                token_key = "max_completion_tokens"
+                continue
+            raise
+
+    chunks: List[str] = []
+    for event in stream:
+        choices = getattr(event, "choices", None)
+        if not choices:
+            continue
+        delta = getattr(choices[0], "delta", None)
+        piece = getattr(delta, "content", None) if delta else None
+        if piece:
+            chunks.append(piece)
+            yield ("delta", piece)
+
+    text = "".join(chunks)
+    if not text.strip():
+        raise RuntimeError("模型流式返回为空，请重试。")
+    yield ("done", output_format.model_validate_json(_extract_json(text)))
+
+
 # ---------- Anthropic 官方 ----------
 def _anthropic_structured(system: str, parts: List[Dict[str, Any]], output_format: Type[T]) -> T:
     import anthropic

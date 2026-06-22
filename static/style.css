@@ -397,6 +397,30 @@ header { position: relative; }
   margin-bottom: 12px;
 }
 
+.stream-preview {
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  background: #f7f9fc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.stream-head {
+  font-size: 14px;
+  color: var(--accent-dark);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.stream-item {
+  font-size: 14px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--line);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.stream-item b { color: var(--muted); margin-right: 6px; }
+
 .gen-error {
   margin: 12px 0 0;
   padding: 10px 14px;

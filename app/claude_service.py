@@ -10,7 +10,7 @@ import re
 from typing import Any, Dict, List
 
 from .content import text_part
-from .llm import ConfigError, RefusalError, structured_completion
+from .llm import ConfigError, RefusalError, stream_completion, structured_completion
 from .prompts import (
     ADAPT_SYSTEM,
     ANSWER_VERIFY_SYSTEM,
@@ -35,6 +35,7 @@ __all__ = [
     "RefusalError",
     "parse_problem",
     "adapt_problem",
+    "adapt_problem_stream",
     "verify_in_scope",
     "verify_answer",
     "verify_answer_sympy",
@@ -75,8 +76,7 @@ def parse_problem(parts: List[Dict[str, Any]]) -> ParsedProblem:
     return parsed
 
 
-def adapt_problem(parsed: ParsedProblem, conditions: AdaptConditions) -> AdaptResult:
-    """第 2 步：在边界内按条件改编。"""
+def _adapt_user_text(parsed: ParsedProblem, conditions: AdaptConditions) -> str:
     user_text = (
         "【原题解析】\n"
         + parsed.model_dump_json(indent=2)
@@ -90,10 +90,29 @@ def adapt_problem(parsed: ParsedProblem, conditions: AdaptConditions) -> AdaptRe
             + conditions.extra_instructions.strip()
             + "（在不超纲前提下尽量满足）。"
         )
-    result = structured_completion(ADAPT_SYSTEM, [text_part(user_text)], AdaptResult)
+    return user_text
+
+
+def adapt_problem(parsed: ParsedProblem, conditions: AdaptConditions) -> AdaptResult:
+    """第 2 步：在边界内按条件改编。"""
+    result = structured_completion(
+        ADAPT_SYSTEM, [text_part(_adapt_user_text(parsed, conditions))], AdaptResult
+    )
     for v in result.variants:
         v.stem = format_choices(v.stem)
     return result
+
+
+def adapt_problem_stream(parsed: ParsedProblem, conditions: AdaptConditions):
+    """流式改编：产出 ("delta", 文本) ... ("done", AdaptResult)。"""
+    user_text = _adapt_user_text(parsed, conditions)
+    for kind, value in stream_completion(ADAPT_SYSTEM, [text_part(user_text)], AdaptResult):
+        if kind == "done":
+            for v in value.variants:
+                v.stem = format_choices(v.stem)
+            yield ("done", value)
+        else:
+            yield (kind, value)
 
 
 def verify_answer(result: AdaptResult) -> AnswerCheckResult:

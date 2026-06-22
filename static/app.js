@@ -189,6 +189,73 @@ async function postJSON(url, body) {
   return data;
 }
 
+// 流式改编：POST /api/adapt_stream，逐块读取 SSE，onProgress(累计文本)，done 返回 variants
+async function streamAdapt(parsed, conditions, onProgress) {
+  const res = await fetch("/api/adapt_stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ parsed, conditions }),
+  });
+  if (res.status === 401) {
+    showAuth();
+    const e = new Error("请先登录");
+    e.fatal = true;
+    throw e;
+  }
+  if (!res.ok) {
+    let msg = `请求失败 (${res.status})`;
+    try { msg = (await res.json()).error || msg; } catch (e) { /* 非 JSON */ }
+    const e = new Error(msg);
+    e.fatal = res.status === 429 || res.status === 400; // 配额/参数错不回退
+    throw e;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let acc = "";
+  let variants = null;
+  let errored = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop();
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data:")) continue;
+      let evt;
+      try { evt = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
+      if (evt.type === "delta") {
+        acc += evt.text;
+        onProgress(acc);
+      } else if (evt.type === "done") {
+        variants = evt.variants;
+      } else if (evt.type === "error") {
+        errored = evt.error;
+      }
+    }
+  }
+  if (errored) {
+    const e = new Error(errored);
+    e.fatal = true; // 后端生成错误，回退非流式多半也一样
+    throw e;
+  }
+  if (!variants) throw new Error("流式结果不完整"); // 传输中断，可回退
+  return variants;
+}
+
+// 从流式 JSON 中提取已完整的 stem 字段值，供边出边显
+function extractStems(jsonText) {
+  const out = [];
+  const re = /"stem"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+  let m;
+  while ((m = re.exec(jsonText))) {
+    try { out.push(JSON.parse('"' + m[1] + '"')); } catch (e) { /* 尚不完整 */ }
+  }
+  return out;
+}
+
 // 仅对网络层瞬断（Failed to fetch / 服务重启）自动重试；HTTP 错误（4xx/5xx）不重试
 async function postJSONRetry(url, body, tries = 3) {
   let lastErr;
@@ -246,13 +313,31 @@ $("generateBtn").addEventListener("click", async () => {
     const parsed = await postForm("/api/parse", form);
     setStep(0, "done");
 
-    // ② 改编生成
+    // ② 改编生成（流式：边写边显；流式不可用时回退普通生成）
     cur = 1;
     setStep(1, "active");
-    const adaptRes = await postJSON("/api/adapt", {
-      parsed,
-      conditions: getConditions(),
-    });
+    const conditions = getConditions();
+    const preview = $("streamPreview");
+    preview.classList.remove("hidden");
+    preview.innerHTML = '<div class="stream-head">✍️ 正在改编…</div>';
+    let adaptVariants;
+    try {
+      adaptVariants = await streamAdapt(parsed, conditions, (acc) => {
+        const stems = extractStems(acc);
+        preview.innerHTML =
+          `<div class="stream-head">✍️ 正在改编…（已生成 ${stems.length} 道 · ${acc.length} 字）</div>` +
+          stems
+            .map((s, i) => `<div class="stream-item"><b>新题 ${i + 1}</b>　${escBr(s)}</div>`)
+            .join("");
+      });
+    } catch (streamErr) {
+      if (streamErr.fatal) throw streamErr;
+      preview.innerHTML = '<div class="stream-head">流式不可用，改用普通生成…</div>';
+      const r = await postJSON("/api/adapt", { parsed, conditions });
+      adaptVariants = r.variants;
+    }
+    preview.classList.add("hidden");
+    const adaptRes = { variants: adaptVariants };
     setStep(1, "done");
 
     // ③④⑤ 不超纲校验 + 答案校验 +（可选）sympy 数值验算：互不依赖，并行执行以提速
@@ -300,6 +385,7 @@ $("generateBtn").addEventListener("click", async () => {
     $("step-results").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     markError();
+    $("streamPreview").classList.add("hidden");
     showGenError(`【${STEP_NAMES[cur]}】失败：${err.message}\n（详细报错见运行 ./run.sh 的终端窗口）`);
   } finally {
     btn.disabled = false;
