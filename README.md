@@ -69,7 +69,19 @@ docker compose up -d        # 然后浏览器打开 http://127.0.0.1:8000
   避免把代理打到限流。总出站并发 ≈ `WEB_CONCURRENCY × LLM_MAX_CONCURRENCY`，按代理额度调。
 
 > 题库为本地 SQLite（WAL 模式，多进程读写安全），适合小团队（约 5–20 人）。更大规模的
-> 用户隔离、配额、Postgres、任务队列属于后续工作。
+> Postgres、任务队列属于后续工作。
+
+## 多用户账号
+
+公网部署时启用账号体系（注册/登录后才能使用）：
+
+- **账号隔离**：每人注册登录，题库各看各的、互不可见。
+- **首位即管理员**：第一个注册的用户自动成为管理员——只有管理员能在「⚙ 设置」里改
+  provider/模型/key，普通用户看到的是只读。
+- **每日配额**：普通用户每天生成次数上限由 `DAILY_QUOTA`（默认 50）控制，超出当天拒绝；
+  管理员不限。生成**失败不扣**配额。
+- **会话**：登录态用 HMAC 签名 Cookie（无状态，多 worker 通用）。公网部署务必设
+  `APP_SECRET`（不设则自动在 `data/secret.key` 持久化一份）。密码以 pbkdf2 加盐哈希存储。
 
 ## 切换 provider（Anthropic 官方 / OpenAI 兼容代理）
 
@@ -100,13 +112,20 @@ OpenAI 模式可填任意代理支持的模型，例如 `claude-opus-4-8`、`gpt
 - OpenAI 模式下 PDF 暂不支持（各代理对文档输入实现不一），请改用图片或粘贴文本，或切回 Anthropic 模式。
 - `OPENAI_MODEL` 要填代理目录里**实际存在**的模型 ID（先 `curl $OPENAI_BASE_URL/models` 查），不一定叫 `claude-opus-4-8` 或 `gpt-5.5`。
 
-其余可选变量：`MAX_TOKENS`、`MAX_UPLOAD_BYTES`。
+其余可选变量：`MAX_TOKENS`、`MAX_UPLOAD_BYTES`、`WEB_CONCURRENCY`、`LLM_MAX_CONCURRENCY`、
+`APP_SECRET`、`DAILY_QUOTA`。
 
 ## 接口
+
+> 除 `/`、`/api/health`、`/api/auth/*` 外，其余 `/api/*` 均需登录（有效会话 Cookie）。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/` | 前端页面 |
+| `POST` | `/api/auth/register` | `{username, password}` → 注册并登录（首位=管理员） |
+| `POST` | `/api/auth/login` | `{username, password}` → 登录，下发会话 Cookie |
+| `POST` | `/api/auth/logout` | 登出，清除会话 |
+| `GET` | `/api/auth/me` | 当前用户（含今日用量/配额），未登录返回 `{user:null}` |
 | `GET` | `/api/health` | 健康检查（是否配置了 key、当前模型） |
 | `POST` | `/api/generate` | `multipart/form-data`：`file`（可选）+ `text`（可选）+ `conditions`（JSON 串）→ 一步完成解析+改编+校验，返回 `{parsed, variants, scope_checks}` |
 | `POST` | `/api/parse` | `multipart/form-data`：`file`（可选）+ `text`（可选）→ 返回 `ParsedProblem`（分步①，前端显示进度用） |

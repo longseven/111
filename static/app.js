@@ -172,6 +172,7 @@ function clearGenError() {
 
 async function postForm(url, form) {
   const res = await fetch(url, { method: "POST", body: form });
+  if (res.status === 401) showAuth();
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
   return data;
@@ -182,6 +183,7 @@ async function postJSON(url, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (res.status === 401) showAuth();
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
   return data;
@@ -728,6 +730,10 @@ async function refreshConfigBadge() {
 async function openSettings() {
   try {
     const res = await fetch("/api/config");
+    if (res.status === 401) {
+      showAuth();
+      return;
+    }
     const c = await res.json();
     $("cfgProvider").value = c.provider === "anthropic" ? "anthropic" : "openai";
     $("cfgOpenaiBase").value = c.openai_base_url || "";
@@ -738,6 +744,13 @@ async function openSettings() {
     setKeyState("cfgOpenaiKeyState", c.has_openai_key);
     setKeyState("cfgAnthropicKeyState", c.has_anthropic_key);
     toggleCfgProvider();
+    // 非管理员：只读，隐藏保存
+    const admin = !!c.is_admin;
+    $("cfgAdminNote").hidden = admin;
+    $("cfgSaveBtn").classList.toggle("hidden", !admin);
+    ["cfgProvider", "cfgOpenaiBase", "cfgOpenaiModel", "cfgAnthropicModel", "cfgOpenaiKey", "cfgAnthropicKey"].forEach(
+      (id) => ($(id).disabled = !admin)
+    );
     $("settingsModal").classList.remove("hidden");
   } catch (e) {
     toast("读取设置失败");
@@ -785,6 +798,96 @@ $("settingsModal").addEventListener("click", (e) => {
 $("cfgProvider").addEventListener("change", toggleCfgProvider);
 $("cfgSaveBtn").addEventListener("click", saveSettings);
 
+// ---------- 账号 ----------
+let authMode = "login"; // login | register
+function showAuth() {
+  $("authModal").classList.remove("hidden");
+  $("authUser").focus();
+}
+function setAuthMode(mode) {
+  authMode = mode;
+  const login = mode === "login";
+  $("authTitle").textContent = login ? "登录" : "注册";
+  $("authSubmitBtn").textContent = login ? "登录" : "注册";
+  $("authToggleBtn").textContent = login ? "没有账号？去注册" : "已有账号？去登录";
+  $("authHint").textContent = login
+    ? "输入账号密码登录。"
+    : "用户名 2–32 位、密码至少 6 位；首位注册的用户将成为管理员。";
+  $("authError").classList.add("hidden");
+}
+async function submitAuth() {
+  const username = $("authUser").value.trim();
+  const password = $("authPwd").value;
+  if (!username || !password) {
+    $("authError").textContent = "请填写用户名和密码。";
+    $("authError").classList.remove("hidden");
+    return;
+  }
+  try {
+    const res = await fetch(`/api/auth/${authMode}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "失败");
+    $("authModal").classList.add("hidden");
+    $("authPwd").value = "";
+    $("authError").classList.add("hidden");
+    toast((authMode === "login" ? "登录成功" : "注册成功") + "：" + d.username);
+    await afterLogin();
+  } catch (err) {
+    $("authError").textContent = err.message;
+    $("authError").classList.remove("hidden");
+  }
+}
+async function refreshUser() {
+  try {
+    const res = await fetch("/api/auth/me");
+    const d = await res.json();
+    return d.user || null;
+  } catch (e) {
+    return null;
+  }
+}
+function renderUser(u) {
+  state.user = u;
+  const badge = $("userBadge");
+  if (!u) {
+    badge.classList.add("hidden");
+    $("logoutBtn").classList.add("hidden");
+    return;
+  }
+  const quota =
+    u.is_admin || !u.daily_quota
+      ? ""
+      : ` · 今日 ${u.usage_today}/${u.daily_quota}`;
+  badge.textContent = `👤 ${u.username}${u.is_admin ? "（管理员）" : ""}${quota}`;
+  badge.classList.remove("hidden");
+  $("logoutBtn").classList.remove("hidden");
+}
+async function afterLogin() {
+  const u = await refreshUser();
+  renderUser(u);
+  if (!u) {
+    showAuth();
+    return;
+  }
+  refreshConfigBadge();
+  loadBankList();
+}
+$("authSubmitBtn").addEventListener("click", submitAuth);
+$("authToggleBtn").addEventListener("click", () => setAuthMode(authMode === "login" ? "register" : "login"));
+$("authPwd").addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
+$("logoutBtn").addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST" });
+  renderUser(null);
+  $("resultsView").innerHTML = "";
+  $("bankList").innerHTML = "";
+  setAuthMode("login");
+  showAuth();
+});
+
 // ---------- 启动 ----------
-refreshConfigBadge();
-loadBankList();
+setAuthMode("login");
+afterLogin();

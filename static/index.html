@@ -15,16 +15,34 @@
     <h1>K12 数学题目改编系统</h1>
     <p class="subtitle">上传题目并填写改编要求 → 一键生成新题（不超纲、附改编理由、可导出 Word）</p>
     <div class="topbar">
+      <span id="userBadge" class="user-badge hidden"></span>
       <span id="modelBadge" class="model-badge"></span>
       <button type="button" class="link" id="settingsBtn">⚙ 设置</button>
+      <button type="button" class="link hidden" id="logoutBtn">退出</button>
     </div>
   </header>
+
+  <!-- 登录 / 注册弹窗 -->
+  <div id="authModal" class="modal hidden">
+    <div class="modal-card">
+      <h2 id="authTitle">登录</h2>
+      <p class="hint" id="authHint">输入账号密码登录；首位注册的用户将成为管理员。</p>
+      <label class="edit-field"><span>用户名</span><input type="text" id="authUser" autocomplete="username" /></label>
+      <label class="edit-field"><span>密码</span><input type="password" id="authPwd" autocomplete="current-password" /></label>
+      <div id="authError" class="gen-error hidden"></div>
+      <div class="edit-actions">
+        <button class="primary" id="authSubmitBtn">登录</button>
+        <button class="link" id="authToggleBtn">没有账号？去注册</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 设置弹窗：在线切换 provider / 模型 / key -->
   <div id="settingsModal" class="modal hidden">
     <div class="modal-card">
       <h2>模型设置</h2>
       <p class="hint">在线修改即时生效，无需重启。key 不回显；留空表示不修改（清空请输入一个空格再保存即回退环境变量）。</p>
+      <p class="hint" id="cfgAdminNote" style="color:var(--bad)" hidden>仅管理员可修改，以下为只读。</p>
       <label class="edit-field"><span>Provider</span>
         <select id="cfgProvider">
           <option value="openai">openai（OpenAI 兼容代理，如 codexzh）</option>

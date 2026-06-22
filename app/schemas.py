@@ -164,6 +164,12 @@ class ConfigUpdate(BaseModel):
     OPENAI_MODEL: Optional[str] = None
 
 
+# ---------- 账号 ----------
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+
 # ---------- 题库（本地保存/调回） ----------
 class BankSaveRequest(BaseModel):
     title: str = Field(default="未命名", description="本条记录的标题。")

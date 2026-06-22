@@ -1,48 +1,24 @@
-"""题库：把改编结果存进本地 SQLite，支持保存 / 列表 / 读取 / 删除。
+"""题库：把改编结果存进本地 SQLite，按用户隔离（每人只见自己的）。
 
-无需额外依赖，用标准库 sqlite3。数据库文件默认在项目根 data/bank.db，
-可用环境变量 BANK_DB_PATH 覆盖。payload 整体以 JSON 文本存一列，
-读写两端都是前端用的同一结构，便于「存题库 → 一键调回结果区」。
+payload 整体以 JSON 文本存一列，读写两端都是前端用的同一结构，
+便于「存题库 → 一键调回结果区」。
 """
 from __future__ import annotations
 
 import json
-import os
-import sqlite3
-import threading
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-_BASE_DIR = Path(__file__).resolve().parent.parent
-_lock = threading.Lock()
-
-
-def _db_path() -> Path:
-    override = os.environ.get("BANK_DB_PATH", "").strip()
-    if override:
-        return Path(override)
-    return _BASE_DIR / "data" / "bank.db"
-
-
-def _connect() -> sqlite3.Connection:
-    path = _db_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # timeout：多 worker 进程并发写时等待锁而非直接报错；WAL：读写并发更顺；
-    # busy_timeout：遇锁最多等 10s。进程内仍有 _lock 串行化，跨进程靠这些 pragma。
-    conn = sqlite3.connect(path, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=10000")
-    return conn
+from .db import connect, db_lock
 
 
 def init_db() -> None:
-    with _lock, _connect() as conn:
+    with db_lock, connect() as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
                 title TEXT NOT NULL,
                 kind TEXT NOT NULL,
                 item_count INTEGER NOT NULL DEFAULT 0,
@@ -51,6 +27,11 @@ def init_db() -> None:
             )
             """
         )
+        # 迁移：老库可能没有 user_id 列
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(records)")}
+        if "user_id" not in cols:
+            conn.execute("ALTER TABLE records ADD COLUMN user_id INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_records_user ON records(user_id, id DESC)")
 
 
 def _count_items(kind: str, payload: Dict[str, Any]) -> int:
@@ -59,34 +40,39 @@ def _count_items(kind: str, payload: Dict[str, Any]) -> int:
     return len(payload.get("variants") or [])
 
 
-def save_record(title: str, kind: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def save_record(
+    title: str, kind: str, payload: Dict[str, Any], user_id: Optional[int] = None
+) -> Dict[str, Any]:
     title = (title or "未命名").strip() or "未命名"
     kind = kind if kind in ("single", "paper") else "single"
     created = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     count = _count_items(kind, payload)
-    with _lock, _connect() as conn:
+    with db_lock, connect() as conn:
         cur = conn.execute(
-            "INSERT INTO records (title, kind, item_count, payload, created_at)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (title, kind, count, json.dumps(payload, ensure_ascii=False), created),
+            "INSERT INTO records (user_id, title, kind, item_count, payload, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, title, kind, count, json.dumps(payload, ensure_ascii=False), created),
         )
         rec_id = cur.lastrowid
     return {"id": rec_id, "title": title, "kind": kind, "item_count": count, "created_at": created}
 
 
-def list_records() -> List[Dict[str, Any]]:
-    with _lock, _connect() as conn:
+def list_records(user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    with db_lock, connect() as conn:
         rows = conn.execute(
-            "SELECT id, title, kind, item_count, created_at FROM records ORDER BY id DESC"
+            "SELECT id, title, kind, item_count, created_at FROM records"
+            " WHERE user_id IS ? ORDER BY id DESC",
+            (user_id,),
         ).fetchall()
     return [dict(r) for r in rows]
 
 
-def get_record(rec_id: int) -> Optional[Dict[str, Any]]:
-    with _lock, _connect() as conn:
+def get_record(rec_id: int, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    with db_lock, connect() as conn:
         row = conn.execute(
-            "SELECT id, title, kind, item_count, payload, created_at FROM records WHERE id = ?",
-            (rec_id,),
+            "SELECT id, title, kind, item_count, payload, created_at FROM records"
+            " WHERE id = ? AND user_id IS ?",
+            (rec_id, user_id),
         ).fetchone()
     if row is None:
         return None
@@ -95,7 +81,9 @@ def get_record(rec_id: int) -> Optional[Dict[str, Any]]:
     return rec
 
 
-def delete_record(rec_id: int) -> bool:
-    with _lock, _connect() as conn:
-        cur = conn.execute("DELETE FROM records WHERE id = ?", (rec_id,))
+def delete_record(rec_id: int, user_id: Optional[int] = None) -> bool:
+    with db_lock, connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM records WHERE id = ? AND user_id IS ?", (rec_id, user_id)
+        )
     return cur.rowcount > 0

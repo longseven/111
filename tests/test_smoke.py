@@ -369,6 +369,78 @@ def test_bank_store_crud(tmp_path, monkeypatch):
     assert store.delete_record(999999) is False
 
 
+# ---------- Tier 2：账号 / 隔离 / 配额 ----------
+def test_bank_per_user_isolation(tmp_path, monkeypatch):
+    monkeypatch.setenv("BANK_DB_PATH", str(tmp_path / "iso.db"))
+    from app import store
+
+    store.init_db()
+    store.save_record("alice", "single", {"variants": [{"stem": "x"}]}, user_id=1)
+    store.save_record("bob", "single", {"variants": [{"stem": "y"}]}, user_id=2)
+
+    assert [r["title"] for r in store.list_records(1)] == ["alice"]
+    assert [r["title"] for r in store.list_records(2)] == ["bob"]
+    rid = store.list_records(1)[0]["id"]
+    assert store.get_record(rid, 1) is not None
+    assert store.get_record(rid, 2) is None  # 别人拿不到
+    assert store.delete_record(rid, 2) is False  # 别人删不掉
+    assert store.delete_record(rid, 1) is True
+
+
+def test_auth_register_login_admin(tmp_path, monkeypatch):
+    monkeypatch.setenv("BANK_DB_PATH", str(tmp_path / "auth.db"))
+    monkeypatch.setenv("APP_SECRET", "s")
+    from app import auth
+
+    auth.init_auth_db()
+    a = auth.register("alice", "secret1")
+    assert a["is_admin"] is True  # 首位=管理员
+    b = auth.register("bob", "secret1")
+    assert b["is_admin"] is False
+
+    with pytest.raises(auth.AuthError):
+        auth.register("alice", "secret2")  # 重名
+    with pytest.raises(auth.AuthError):
+        auth.register("ok", "123")  # 密码太短
+
+    assert auth.authenticate("bob", "secret1")["username"] == "bob"
+    with pytest.raises(auth.AuthError):
+        auth.authenticate("bob", "wrong")
+
+
+def test_auth_token_roundtrip(monkeypatch):
+    import base64
+
+    monkeypatch.setenv("APP_SECRET", "s")
+    from app import auth
+
+    tok = auth.issue_token({"id": 7, "is_admin": True})
+    assert auth.verify_token(tok) == {"id": 7, "is_admin": True}
+    assert auth.verify_token(None) is None
+    assert auth.verify_token("garbage") is None
+    # 伪造：结构合法但签名错误（改 user_id 提权）→ 必须被拒
+    forged = base64.urlsafe_b64encode(b"7:1:9999999999:deadbeef").decode()
+    assert auth.verify_token(forged) is None
+    # 换密钥后旧令牌失效
+    monkeypatch.setenv("APP_SECRET", "other")
+    assert auth.verify_token(tok) is None
+
+
+def test_quota_consume_and_limit(tmp_path, monkeypatch):
+    monkeypatch.setenv("BANK_DB_PATH", str(tmp_path / "quota.db"))
+    monkeypatch.setenv("DAILY_QUOTA", "2")
+    from app import auth
+
+    auth.init_auth_db()
+    auth.check_quota(5, False)  # 未超，放行
+    auth.consume(5, False)
+    auth.consume(5, False)
+    assert auth.usage_today(5) == 2
+    with pytest.raises(auth.QuotaError):
+        auth.check_quota(5, False)  # 已达上限
+    auth.check_quota(5, True)  # 管理员不限
+
+
 def test_bank_save_request_schema():
     from app.schemas import BankSaveRequest
 
