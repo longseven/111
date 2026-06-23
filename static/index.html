@@ -167,10 +167,38 @@
           <button class="link" id="refreshBankBtn">刷新</button>
         </div>
       </div>
-      <p class="hint">保存过的改编结果列在这里，点「调回」即可重新载入到结果区继续编辑或导出。</p>
+      <p class="hint">保存过的改编结果列在这里：「调回」重新载入结果区，「选题」从中挑题加入下方组卷篮。</p>
       <div id="bankList" class="bank-list"></div>
     </section>
+
+    <!-- 组卷篮：从题库挑题自由组卷 -->
+    <section class="card hidden" id="step-compose">
+      <div class="results-header">
+        <h2>组卷篮 <span id="composeCount" class="model-badge"></span></h2>
+        <div class="actions">
+          <select id="composeFormula" title="公式格式">
+            <option value="image">图片公式（WPS／Word 都正常）⭐推荐</option>
+            <option value="omml">可编辑公式（仅 Microsoft Word）</option>
+          </select>
+          <button class="link" id="composeExportBtn">导出组卷 Word</button>
+          <button class="link" id="composeClearBtn">清空</button>
+        </div>
+      </div>
+      <label class="edit-field"><span>试卷标题</span><input type="text" id="composeTitle" placeholder="如：七年级有理数测验" /></label>
+      <div id="composeList"></div>
+    </section>
   </main>
+
+  <!-- 选题弹窗：列出某条题库记录里的题，逐题加入组卷 -->
+  <div id="pickerModal" class="modal hidden">
+    <div class="modal-card">
+      <h2 id="pickerTitle">选题加入组卷</h2>
+      <div id="pickerList"></div>
+      <div class="edit-actions">
+        <button class="link" id="pickerCloseBtn">关闭</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast hidden"></div>
   <script src="/static/app.js"></script>

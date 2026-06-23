@@ -6,6 +6,7 @@ const state = {
   selectedFile: null,
   parsed: null,
   lastResponse: null,
+  compose: [],
 };
 
 // ---------- 工具 ----------
@@ -642,6 +643,27 @@ function renderPaper(groups) {
 }
 
 // ---------- 导出 ----------
+async function downloadDocx(url, body, filename) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) showAuth();
+  if (!res.ok) {
+    let msg = `导出失败 (${res.status})`;
+    try { msg = (await res.json()).error || msg; } catch (e) { /* 非 JSON */ }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const dlUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = dlUrl;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(dlUrl);
+}
+
 $("exportWordBtn").addEventListener("click", async () => {
   const paper = state.mode === "paper";
   if (paper ? !state.paperGroups : !state.lastResponse) return;
@@ -657,23 +679,7 @@ $("exportWordBtn").addEventListener("click", async () => {
           title: "改编题目",
           formula_mode: $("formulaMode").value,
         };
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      let msg = `导出失败 (${res.status})`;
-      try { msg = (await res.json()).error || msg; } catch (e) { /* 非 JSON */ }
-      throw new Error(msg);
-    }
-    const blob = await res.blob();
-    const dlUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = dlUrl;
-    a.download = paper ? "改编试卷.docx" : "改编题目.docx";
-    a.click();
-    URL.revokeObjectURL(dlUrl);
+    await downloadDocx(url, body, paper ? "改编试卷.docx" : "改编题目.docx");
     toast("已导出 Word");
   } catch (err) {
     toast(err.message);
@@ -762,6 +768,7 @@ function renderBankList(records) {
       </div>
       <div class="bank-ops">
         <button class="link" data-load="${r.id}">调回</button>
+        <button class="link" data-pick="${r.id}">选题</button>
         <button class="link" data-del="${r.id}">删除</button>
       </div>
     </div>`
@@ -771,9 +778,135 @@ function renderBankList(records) {
     .querySelectorAll("[data-load]")
     .forEach((b) => b.addEventListener("click", () => loadBankRecord(b.dataset.load)));
   $("bankList")
+    .querySelectorAll("[data-pick]")
+    .forEach((b) => b.addEventListener("click", () => openPicker(b.dataset.pick)));
+  $("bankList")
     .querySelectorAll("[data-del]")
     .forEach((b) => b.addEventListener("click", () => deleteBankRecord(b.dataset.del)));
 }
+
+// ---------- 题库挑题组卷 ----------
+// 从一条记录里取出所有题（单题取 variants；整卷把各组 variants 摊平）
+function recordVariants(rec) {
+  const p = rec.payload || {};
+  if (rec.kind === "paper") {
+    const out = [];
+    (p.groups || []).forEach((g) => (g.variants || []).forEach((v) => out.push(v)));
+    return out;
+  }
+  return p.variants || [];
+}
+
+let pickerRegistry = [];
+async function openPicker(id) {
+  try {
+    const res = await fetch(`/api/bank/${id}`);
+    const rec = await res.json();
+    if (!res.ok) throw new Error(rec.error || "读取失败");
+    const vs = recordVariants(rec);
+    pickerRegistry = vs;
+    $("pickerTitle").textContent = `选题加入组卷 · ${rec.title || ""}`;
+    if (!vs.length) {
+      $("pickerList").innerHTML = '<p class="hint">这条记录里没有可选的题。</p>';
+    } else {
+      $("pickerList").innerHTML = vs
+        .map(
+          (v, i) => `
+        <div class="pick-item">
+          <div class="pick-stem">${escBr(v.stem)}</div>
+          <button class="link" data-add="${i}">＋ 加入组卷</button>
+        </div>`
+        )
+        .join("");
+      typeset($("pickerList"));
+      $("pickerList")
+        .querySelectorAll("[data-add]")
+        .forEach((b) =>
+          b.addEventListener("click", () => addToCompose(pickerRegistry[Number(b.dataset.add)]))
+        );
+    }
+    $("pickerModal").classList.remove("hidden");
+  } catch (err) {
+    toast(err.message || "读取失败");
+  }
+}
+
+function addToCompose(v) {
+  if (!v) return;
+  state.compose = state.compose || [];
+  state.compose.push(JSON.parse(JSON.stringify(v))); // 深拷贝，避免与题库引用纠缠
+  renderCompose();
+  toast(`已加入组卷（共 ${state.compose.length} 题）`);
+}
+
+function renderCompose() {
+  const list = state.compose || [];
+  const sec = $("step-compose");
+  if (!list.length) {
+    sec.classList.add("hidden");
+    return;
+  }
+  sec.classList.remove("hidden");
+  $("composeCount").textContent = `${list.length} 题`;
+  $("composeList").innerHTML = list
+    .map(
+      (v, i) => `
+    <div class="pick-item">
+      <div class="pick-stem"><b>第 ${i + 1} 题</b>　${escBr(v.stem)}</div>
+      <button class="link" data-remove="${i}">移除</button>
+    </div>`
+    )
+    .join("");
+  typeset($("composeList"));
+  $("composeList")
+    .querySelectorAll("[data-remove]")
+    .forEach((b) =>
+      b.addEventListener("click", () => {
+        state.compose.splice(Number(b.dataset.remove), 1);
+        renderCompose();
+      })
+    );
+}
+
+async function exportCompose() {
+  const list = state.compose || [];
+  if (!list.length) {
+    toast("组卷篮是空的");
+    return;
+  }
+  const btn = $("composeExportBtn");
+  setBusy(btn, true, "导出中…");
+  try {
+    await downloadDocx(
+      "/api/export",
+      {
+        parsed: null,
+        variants: list,
+        title: $("composeTitle").value.trim() || "组卷",
+        formula_mode: $("composeFormula").value,
+      },
+      ($("composeTitle").value.trim() || "组卷") + ".docx"
+    );
+    toast("已导出组卷 Word");
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    setBusy(btn, false, "导出组卷 Word");
+  }
+}
+
+$("pickerCloseBtn").addEventListener("click", () => $("pickerModal").classList.add("hidden"));
+$("pickerModal").addEventListener("click", (e) => {
+  if (e.target === $("pickerModal")) $("pickerModal").classList.add("hidden");
+});
+$("composeExportBtn").addEventListener("click", exportCompose);
+$("composeClearBtn").addEventListener("click", () => {
+  if (!(state.compose || []).length) return;
+  if (confirm("清空组卷篮？")) {
+    state.compose = [];
+    renderCompose();
+  }
+});
 
 async function loadBankRecord(id) {
   try {
@@ -1000,6 +1133,8 @@ $("logoutBtn").addEventListener("click", async () => {
   renderUser(null);
   $("resultsView").innerHTML = "";
   $("bankList").innerHTML = "";
+  state.compose = [];
+  renderCompose();
   setAuthMode("login");
   showAuth();
 });

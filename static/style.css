@@ -397,6 +397,18 @@ header { position: relative; }
   margin-bottom: 12px;
 }
 
+.pick-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.pick-item:first-child { border-top: none; }
+.pick-stem { font-size: 14px; flex: 1; }
+#composeTitle { max-width: 360px; }
+
 .stream-preview {
   margin: 14px 0 4px;
   padding: 12px 14px;
